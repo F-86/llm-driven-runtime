@@ -3,9 +3,13 @@ name = "llm-driven-runtime"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["tool-macros"]
+
 [dependencies]
 async-trait = "0.1.92"
 schemars = "1.2.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["full"] }
+tool-macros = { path = "tool-macros" }
