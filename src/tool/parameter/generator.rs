@@ -2,6 +2,8 @@ use crate::{state::State, tool::Tool, user_input::UserInput};
 
 pub mod empty;
 
+pub use empty::EmptyParameterGenerator;
+
 /// 参数生成器
 #[async_trait::async_trait]
 pub trait ParameterGenerator {

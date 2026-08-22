@@ -2,7 +2,7 @@ use crate::{
     state::State,
     tool::{
         Tool,
-        parameter_generator::{ParameterGenerationError, ParameterGenerator},
+        parameter::generator::{ParameterGenerationError, ParameterGenerator},
     },
     user_input::UserInput,
 };

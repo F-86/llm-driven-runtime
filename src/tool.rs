@@ -1,6 +1,6 @@
 pub mod definition;
 pub mod implementations;
-pub mod parameter_generator;
+pub mod parameter;
 pub mod registry;
 pub mod selector;
 

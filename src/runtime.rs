@@ -1,6 +1,10 @@
 use crate::{
     state::State,
-    tool::{ToolSelector, parameter_generator::ParameterGenerator, registry::ToolRegistry},
+    tool::{
+        ToolSelector,
+        parameter::{generator::ParameterGenerator, validator::ParameterValidator},
+        registry::ToolRegistry,
+    },
     user_input::UserInput,
 };
 
@@ -8,7 +12,7 @@ use crate::{
 mod tests;
 
 /// 运行时
-pub struct Runtime<S, G> {
+pub struct Runtime<S, G, V> {
     /// 状态
     state: State,
     /// 工具注册表
@@ -17,24 +21,29 @@ pub struct Runtime<S, G> {
     tool_selector: S,
     /// 参数生成器
     parameter_generator: G,
+    /// 参数校验器
+    parameter_validator: V,
 }
 
-impl<S, G> Runtime<S, G>
+impl<S, G, V> Runtime<S, G, V>
 where
     S: ToolSelector,
     G: ParameterGenerator,
+    V: ParameterValidator,
 {
     pub fn new(
         state: State,
         tool_registry: ToolRegistry,
         tool_selector: S,
         parameter_generator: G,
+        parameter_validator: V,
     ) -> Self {
         Self {
             state,
             tool_registry,
             tool_selector,
             parameter_generator,
+            parameter_validator,
         }
     }
 
@@ -75,6 +84,20 @@ where
             }
         };
 
+        // 校验参数
+        match self
+            .parameter_validator
+            .validate(tool, &params, &self.state)
+            .await
+        {
+            Ok(_) => {}
+            Err(error) => {
+                return RuntimeOutput::Failed {
+                    message: error.message,
+                };
+            }
+        };
+
         // 调用工具
         match tool.execute(params, &self.state).await {
             Ok(result) => RuntimeOutput::Completed {
@@ -87,9 +110,14 @@ where
     }
 }
 
+/// 运行时的结果
 pub enum RuntimeOutput {
+    /// 运行成功
     Completed { message: String },
+    /// 运行失败
     Failed { message: String },
+    /// 需要确认
     NeedConfirmation { message: String },
+    /// 需要用户输入
     NeedUserInput { message: String },
 }
