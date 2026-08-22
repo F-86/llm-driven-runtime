@@ -1,10 +1,6 @@
 use crate::{
     state::State,
-    tool::{
-        ToolSelector,
-        parameter::{generator::ParameterGenerator, validator::ParameterValidator},
-        registry::ToolRegistry,
-    },
+    tool::{ToolSelector, argument_generator::ArgumentGenerator, registry::ToolRegistry},
     user_input::UserInput,
 };
 
@@ -12,7 +8,7 @@ use crate::{
 mod tests;
 
 /// 运行时
-pub struct Runtime<S, G, V> {
+pub struct Runtime<S, G> {
     /// 状态
     state: State,
     /// 工具注册表
@@ -21,29 +17,24 @@ pub struct Runtime<S, G, V> {
     tool_selector: S,
     /// 参数生成器
     parameter_generator: G,
-    /// 参数校验器
-    parameter_validator: V,
 }
 
-impl<S, G, V> Runtime<S, G, V>
+impl<S, G> Runtime<S, G>
 where
     S: ToolSelector,
-    G: ParameterGenerator,
-    V: ParameterValidator,
+    G: ArgumentGenerator,
 {
     pub fn new(
         state: State,
         tool_registry: ToolRegistry,
         tool_selector: S,
         parameter_generator: G,
-        parameter_validator: V,
     ) -> Self {
         Self {
             state,
             tool_registry,
             tool_selector,
             parameter_generator,
-            parameter_validator,
         }
     }
 
@@ -71,7 +62,7 @@ where
         };
 
         // 生成参数
-        let params = match self
+        let param = match self
             .parameter_generator
             .generate(&input, &self.state, tool)
             .await
@@ -84,22 +75,8 @@ where
             }
         };
 
-        // 校验参数
-        match self
-            .parameter_validator
-            .validate(tool, &params, &self.state)
-            .await
-        {
-            Ok(_) => {}
-            Err(error) => {
-                return RuntimeOutput::Failed {
-                    message: error.message,
-                };
-            }
-        };
-
         // 调用工具
-        match tool.execute(params, &self.state).await {
+        match tool.execute(param, &self.state).await {
             Ok(result) => RuntimeOutput::Completed {
                 message: result.output.to_string(),
             },

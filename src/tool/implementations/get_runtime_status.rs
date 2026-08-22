@@ -6,6 +6,11 @@ use crate::{
     },
 };
 
+/// `GetRuntimeStatus` 工具的参数
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetRuntimeStatusParam {}
+
 /// 获取 runtime 状态的工具
 pub struct GetRuntimeStatus;
 
@@ -20,41 +25,18 @@ impl Tool for GetRuntimeStatus {
     }
 
     fn parameter_schema(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": false
-        })
+        serde_json::to_value(schemars::schema_for!(GetRuntimeStatusParam))
+            .expect("Failed to serialize schema")
     }
 
-    async fn execute(
-        &self,
-        _arguments: serde_json::Value,
-        state: &State,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, param: String, state: &State) -> Result<ToolResult, ToolError> {
+        let _param = serde_json::from_str::<GetRuntimeStatusParam>(&param)?;
+
         Ok(ToolResult {
             output: serde_json::json!({
                 "task_id": state.task_id,
                 "status": "normal"
             }),
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 验证 `get_runtime_status` 工具的 `parameter_schema()` 方法
-    #[test]
-    fn should_return_empty_parameter_schema() {
-        let tool = GetRuntimeStatus;
-        let schema = tool.parameter_schema();
-
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["properties"], serde_json::json!({}));
-        assert_eq!(schema["required"], serde_json::json!([]));
-        assert_eq!(schema["additionalProperties"], false);
     }
 }

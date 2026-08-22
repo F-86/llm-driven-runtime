@@ -2,9 +2,7 @@ use crate::{
     runtime::{Runtime, RuntimeOutput},
     state::State,
     tool::{
-        GetRuntimeStatus, Tool,
-        parameter::{generator::EmptyParameterGenerator, validator::EmptyParameterValidator},
-        registry::ToolRegistry,
+        GetRuntimeStatus, Tool, argument_generator::EmptyArgumentGenerator, registry::ToolRegistry,
         selector::FixedToolSelector,
     },
     user_input::UserInput,
@@ -22,19 +20,11 @@ async fn should_execute_get_runtime_status() {
         tool_name: GetRuntimeStatus.name().to_string(),
     };
 
-    let parameter_generator = EmptyParameterGenerator;
-
-    let parameter_validator = EmptyParameterValidator;
+    let parameter_generator = EmptyArgumentGenerator;
 
     let input = UserInput::Message("".to_string());
 
-    let mut runtime = Runtime::new(
-        state,
-        tool_registry,
-        tool_selector,
-        parameter_generator,
-        parameter_validator,
-    );
+    let mut runtime = Runtime::new(state, tool_registry, tool_selector, parameter_generator);
     match runtime.handle(input).await {
         RuntimeOutput::Completed { message } => {
             assert!(message.contains("\"task_id\":13"));
@@ -55,19 +45,11 @@ async fn should_return_failed_when_tool_not_found() {
         tool_name: GetRuntimeStatus.name().to_string(),
     };
 
-    let parameter_generator = EmptyParameterGenerator;
-
-    let parameter_validator = EmptyParameterValidator;
+    let parameter_generator = EmptyArgumentGenerator;
 
     let input = UserInput::Message("".to_string());
 
-    let mut runtime = Runtime::new(
-        state,
-        tool_registry,
-        tool_selector,
-        parameter_generator,
-        parameter_validator,
-    );
+    let mut runtime = Runtime::new(state, tool_registry, tool_selector, parameter_generator);
     match runtime.handle(input).await {
         RuntimeOutput::Failed { message } => {
             assert_eq!(message, "找不到工具");

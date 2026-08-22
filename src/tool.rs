@@ -1,6 +1,6 @@
+pub mod argument_generator;
 pub mod definition;
 pub mod implementations;
-pub mod parameter;
 pub mod registry;
 pub mod selector;
 

@@ -13,11 +13,7 @@ pub trait Tool {
     fn parameter_schema(&self) -> serde_json::Value;
 
     /// 执行
-    async fn execute(
-        &self,
-        arguments: serde_json::Value,
-        state: &State,
-    ) -> Result<ToolResult, ToolError>;
+    async fn execute(&self, param: String, state: &State) -> Result<ToolResult, ToolError>;
 }
 
 /// 工具调用成功的结果
@@ -29,4 +25,12 @@ pub struct ToolResult {
 #[derive(Debug)]
 pub struct ToolError {
     pub message: String,
+}
+
+impl From<serde_json::Error> for ToolError {
+    fn from(value: serde_json::Error) -> Self {
+        ToolError {
+            message: value.to_string(),
+        }
+    }
 }
