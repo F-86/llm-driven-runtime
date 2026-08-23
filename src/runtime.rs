@@ -16,7 +16,7 @@ pub struct Runtime<S, G> {
     /// 工具选择器
     tool_selector: S,
     /// 参数生成器
-    parameter_generator: G,
+    argument_generator: G,
 }
 
 impl<S, G> Runtime<S, G>
@@ -28,13 +28,13 @@ where
         state: State,
         tool_registry: ToolRegistry,
         tool_selector: S,
-        parameter_generator: G,
+        argument_generator: G,
     ) -> Self {
         Self {
             state,
             tool_registry,
             tool_selector,
-            parameter_generator,
+            argument_generator,
         }
     }
 
@@ -62,8 +62,8 @@ where
         };
 
         // 生成参数
-        let param = match self
-            .parameter_generator
+        let arg = match self
+            .argument_generator
             .generate(&input, &self.state, tool)
             .await
         {
@@ -76,7 +76,7 @@ where
         };
 
         // 调用工具
-        match tool.execute(param, &self.state).await {
+        match tool.execute(arg, &self.state).await {
             Ok(result) => RuntimeOutput::Completed {
                 message: result.output.to_string(),
             },

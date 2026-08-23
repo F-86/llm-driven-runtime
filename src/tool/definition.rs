@@ -13,7 +13,7 @@ pub trait Tool {
     fn parameter_schema(&self) -> serde_json::Value;
 
     /// 执行
-    async fn execute(&self, param: String, state: &State) -> Result<ToolResult, ToolError>;
+    async fn execute(&self, arg: String, state: &State) -> Result<ToolResult, ToolError>;
 }
 
 /// 工具调用成功的结果

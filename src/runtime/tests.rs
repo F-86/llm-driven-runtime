@@ -20,11 +20,11 @@ async fn should_execute_get_runtime_status() {
         tool_name: GetRuntimeStatus.name().to_string(),
     };
 
-    let parameter_generator = EmptyArgumentGenerator;
+    let argument_generator = EmptyArgumentGenerator;
 
     let input = UserInput::Message("".to_string());
 
-    let mut runtime = Runtime::new(state, tool_registry, tool_selector, parameter_generator);
+    let mut runtime = Runtime::new(state, tool_registry, tool_selector, argument_generator);
     match runtime.handle(input).await {
         RuntimeOutput::Completed { message } => {
             assert!(message.contains("\"task_id\":13"));
@@ -45,11 +45,11 @@ async fn should_return_failed_when_tool_not_found() {
         tool_name: GetRuntimeStatus.name().to_string(),
     };
 
-    let parameter_generator = EmptyArgumentGenerator;
+    let argument_generator = EmptyArgumentGenerator;
 
     let input = UserInput::Message("".to_string());
 
-    let mut runtime = Runtime::new(state, tool_registry, tool_selector, parameter_generator);
+    let mut runtime = Runtime::new(state, tool_registry, tool_selector, argument_generator);
     match runtime.handle(input).await {
         RuntimeOutput::Failed { message } => {
             assert_eq!(message, "找不到工具");
