@@ -22,7 +22,8 @@ async fn should_execute_get_runtime_status_tool() {
     let state = State { task_id: 42 };
 
     let result = tool.execute("{}".to_string(), &state).await.unwrap();
+    let result = serde_json::Value::String(result.output);
 
-    assert_eq!(result.output["task_id"], 42);
-    assert_eq!(result.output["status"], "normal");
+    assert_eq!(result["task_id"], 42);
+    assert_eq!(result["status"], "normal");
 }

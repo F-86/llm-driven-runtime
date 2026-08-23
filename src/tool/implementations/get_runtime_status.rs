@@ -32,7 +32,8 @@ impl Tool for GetRuntimeStatus {
             output: serde_json::json!({
                 "task_id": state.task_id,
                 "status": "normal"
-            }),
+            })
+            .to_string(),
         })
     }
 }

@@ -18,7 +18,7 @@ pub trait Tool {
 
 /// 工具调用成功的结果
 pub struct ToolResult {
-    pub output: serde_json::Value,
+    pub output: String,
 }
 
 /// 工具调用失败的结果
