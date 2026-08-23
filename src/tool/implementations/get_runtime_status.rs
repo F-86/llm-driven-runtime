@@ -26,7 +26,7 @@ impl Tool for GetRuntimeStatus {
     }
 
     async fn execute(&self, arg: String, state: &State) -> Result<ToolResult, ToolError> {
-        let _arg = serde_json::from_str::<GetRuntimeStatusArg>(&arg)?;
+        let _arg: GetRuntimeStatusArg = serde_json::from_str(&arg)?;
 
         Ok(ToolResult {
             output: serde_json::json!({

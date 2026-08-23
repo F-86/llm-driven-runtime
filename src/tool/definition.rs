@@ -17,6 +17,7 @@ pub trait Tool {
 }
 
 /// 工具调用成功的结果
+#[derive(Debug)]
 pub struct ToolResult {
     pub output: String,
 }
