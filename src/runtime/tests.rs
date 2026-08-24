@@ -17,7 +17,7 @@ async fn should_execute_get_runtime_status() {
     tool_registry.register(GetRuntimeStatus);
 
     let tool_selector = FixedToolSelector {
-        tool_name: GetRuntimeStatus.name().to_string(),
+        tool_name: GetRuntimeStatus.name(),
     };
 
     let argument_generator = EmptyArgumentGenerator;
@@ -42,7 +42,7 @@ async fn should_return_failed_when_tool_not_found() {
     let tool_registry = ToolRegistry::new();
 
     let tool_selector = FixedToolSelector {
-        tool_name: GetRuntimeStatus.name().to_string(),
+        tool_name: GetRuntimeStatus.name(),
     };
 
     let argument_generator = EmptyArgumentGenerator;

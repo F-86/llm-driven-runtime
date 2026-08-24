@@ -5,12 +5,12 @@ use crate::{
 };
 
 /// 固定的工具选择器，用于测试
-pub struct FixedToolSelector {
-    pub tool_name: String,
+pub struct FixedToolSelector<'a> {
+    pub tool_name: &'a str,
 }
 
 #[async_trait::async_trait]
-impl ToolSelector for FixedToolSelector {
+impl<'a> ToolSelector for FixedToolSelector<'a> {
     async fn select(
         &self,
         _input: &UserInput,
@@ -18,7 +18,7 @@ impl ToolSelector for FixedToolSelector {
         _tools: &ToolRegistry,
     ) -> Result<ToolSelection, SelectionError> {
         Ok(ToolSelection {
-            tool_name: self.tool_name.clone(),
+            tool_name: self.tool_name.to_string(),
         })
     }
 }

@@ -1,8 +1,10 @@
 use crate::{state::State, tool::Tool, user_input::UserInput};
 
 pub mod empty;
+pub mod fixed;
 
 pub use empty::EmptyArgumentGenerator;
+pub use fixed::FixedArgumentGenerator;
 
 /// 参数生成器
 #[async_trait::async_trait]
