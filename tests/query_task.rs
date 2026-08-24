@@ -1,57 +1,18 @@
 use llm_driven_runtime::{
     runtime::{Runtime, RuntimeOutput},
-    state::State,
     tool::{
-        GetRuntimeStatus, QueryTask, Tool, argument_generator::FixedArgumentGenerator,
-        registry::ToolRegistry, selector::FixedToolSelector,
+        QueryTask, Tool, argument_generator::FixedArgumentGenerator, selector::FixedToolSelector,
     },
     user_input::UserInput,
 };
 
-/// 构建 `Runtime` 对象
-///
-/// `Runtime` 对象中包含两个工具：
-///
-/// - `GetRuntimeStatus`
-/// - `QueryTask`
-///
-/// # Arguments
-///
-/// * `tool_name` - 固定选择的工具
-/// * `arg` - 固定生成的参数
-fn build_runtime<'a, 'b>(
-    tool_name: &'a str,
-    arg: &'b str,
-) -> Runtime<FixedToolSelector<'a>, FixedArgumentGenerator<'b>> {
-    let state = State { task_id: 13 };
-
-    let mut tool_registry = ToolRegistry::new();
-    tool_registry.register(GetRuntimeStatus);
-    tool_registry.register(QueryTask);
-
-    let tool_selector = FixedToolSelector {
-        tool_name: tool_name,
-    };
-
-    let argument_generator = FixedArgumentGenerator { arg };
-
-    Runtime::new(state, tool_registry, tool_selector, argument_generator)
-}
+mod common;
 
 /// 构建 `Runtime` 对象，这个 `Runtime` 使用 `FixedArgumentGenerator`，选择 `QueryTask` 工具
-///
-/// `Runtime` 对象中包含两个工具：
-///
-/// - `GetRuntimeStatus`
-/// - `QueryTask`
-///
-/// # Arguments
-///
-/// * `arg` - 固定生成的参数
 fn build_runtime_with_query_task_selector(
     arg: &'_ str,
 ) -> Runtime<FixedToolSelector<'_>, FixedArgumentGenerator<'_>> {
-    build_runtime(QueryTask.name(), arg)
+    common::build_runtime(QueryTask.name(), arg)
 }
 
 /// 校验 `Runtime` 调用成功时的返回值的正确性
@@ -119,19 +80,6 @@ async fn should_return_failed_when_query_task_arguments_are_invalid() {
     match output {
         RuntimeOutput::Failed { message } => {
             assert!(message.contains("invalid type"));
-        }
-        _ => panic!("期望 Runtime 返回 Failed"),
-    }
-}
-
-/// 验证 `FixedToolSelector` 返回不存在的工具时，Runtime 返回失败
-#[tokio::test]
-async fn should_return_failed_when_selected_tool_does_not_exist() {
-    let mut runtime = build_runtime("not_exists", "");
-    let output = runtime.handle(UserInput::Message("".to_string())).await;
-    match output {
-        RuntimeOutput::Failed { message } => {
-            assert_eq!(message, "找不到工具")
         }
         _ => panic!("期望 Runtime 返回 Failed"),
     }

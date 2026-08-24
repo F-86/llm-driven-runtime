@@ -4,9 +4,6 @@ use crate::{
     user_input::UserInput,
 };
 
-#[cfg(test)]
-mod tests;
-
 /// 运行时
 pub struct Runtime<S, G> {
     /// 状态
