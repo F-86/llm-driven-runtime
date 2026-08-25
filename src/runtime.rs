@@ -75,7 +75,7 @@ where
         // 调用工具
         match tool.execute(arg, &self.state).await {
             Ok(result) => RuntimeOutput::Completed {
-                message: result.output.to_string(),
+                message: result.output.clone(),
             },
             Err(error) => RuntimeOutput::Failed {
                 message: error.message,

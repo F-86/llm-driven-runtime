@@ -22,15 +22,13 @@ pub fn build_runtime<'a, 'b>(
     tool_name: &'a str,
     arg: &'b str,
 ) -> Runtime<FixedToolSelector<'a>, FixedArgumentGenerator<'b>> {
-    let state = State { task_id: 13 };
+    let state = State {};
 
     let mut tool_registry = ToolRegistry::new();
     tool_registry.register(GetRuntimeStatus);
     tool_registry.register(QueryTask);
 
-    let tool_selector = FixedToolSelector {
-        tool_name: tool_name,
-    };
+    let tool_selector = FixedToolSelector { tool_name };
 
     let argument_generator = FixedArgumentGenerator { arg };
 

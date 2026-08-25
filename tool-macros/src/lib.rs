@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{ItemImpl, Type, parse_macro_input};
 
-/// 为 Tool 的 impl 自动生成 parameter_schema 方法。
+/// 为 Tool 的 impl 自动生成 `parameter_schema` 方法。
 ///
 /// 用法：
 ///

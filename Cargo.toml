@@ -6,6 +6,12 @@ edition = "2024"
 [workspace]
 members = ["tool-macros"]
 
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 } # 开启 pedantic 规则并设为警告
+
+[lints]
+workspace = true
+
 [dependencies]
 async-trait = "0.1.92"
 schemars = "1.2.2"

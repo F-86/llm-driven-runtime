@@ -10,7 +10,7 @@ pub struct FixedToolSelector<'a> {
 }
 
 #[async_trait::async_trait]
-impl<'a> ToolSelector for FixedToolSelector<'a> {
+impl ToolSelector for FixedToolSelector<'_> {
     async fn select(
         &self,
         _input: &UserInput,

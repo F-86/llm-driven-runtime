@@ -16,8 +16,7 @@ fn build_runtime_with_query_task_selector(
 }
 
 /// 校验 `Runtime` 调用成功时的返回值的正确性
-fn assert_success_result(result: &serde_json::Value, task_id: u32, limit: u32) {
-    assert_eq!(result["task_id"], task_id);
+fn assert_success_result(result: &serde_json::Value, limit: u32) {
     assert_eq!(result["limit"], limit);
     assert_eq!(result["status"], "normal");
 }
@@ -25,14 +24,14 @@ fn assert_success_result(result: &serde_json::Value, task_id: u32, limit: u32) {
 /// 验证 `Runtime` 能成功调用 `QueryTask` 工具
 #[tokio::test]
 async fn should_execute_query_task_through_runtime() {
-    let mut runtime = build_runtime_with_query_task_selector(r#"{"task_id":13,"limit":5}"#);
-    let output = runtime.handle(UserInput::Message("".to_string())).await;
+    let mut runtime = build_runtime_with_query_task_selector(r#"{"limit":5}"#);
+    let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Completed { message } => {
             let result: serde_json::Value =
                 serde_json::from_str(&message).expect("Runtime 应该返回合法 JSON");
 
-            assert_success_result(&result, 13, 5);
+            assert_success_result(&result, 5);
         }
         RuntimeOutput::Failed { message } => panic!("QueryTask 调用失败：{message}"),
         _ => panic!("期望 Runtime 返回 Completed"),
@@ -42,41 +41,25 @@ async fn should_execute_query_task_through_runtime() {
 /// 验证 `QueryTask` 的默认参数能够通过 `Runtime` 生效
 #[tokio::test]
 async fn should_execute_query_task_default_through_runtime() {
-    let mut runtime = build_runtime_with_query_task_selector(r#"{"task_id":13}"#);
-    let output = runtime.handle(UserInput::Message("".to_string())).await;
+    let mut runtime = build_runtime_with_query_task_selector(r"{}");
+    let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Completed { message } => {
             let result: serde_json::Value =
                 serde_json::from_str(&message).expect("Runtime 应该返回合法 JSON");
 
-            assert_success_result(&result, 13, 10);
+            assert_success_result(&result, 10);
         }
         RuntimeOutput::Failed { message } => panic!("QueryTask 调用失败：{message}"),
         _ => panic!("期望 Runtime 返回 Completed"),
     }
 }
 
-/// 验证 `QueryTask` 的业务参数错误能够经过 `Runtime` 返回
-#[tokio::test]
-async fn should_return_failed_when_querying_another_task() {
-    let mut runtime = build_runtime_with_query_task_selector(r#"{"task_id":99,"limit":5}"#);
-    let output = runtime.handle(UserInput::Message("".to_string())).await;
-    match output {
-        RuntimeOutput::Failed { message } => {
-            assert_eq!(
-                message,
-                "只能查询当前任务，当前任务 id：13，传入任务 id：99"
-            );
-        }
-        _ => panic!("期望 Runtime 返回 Failed"),
-    }
-}
-
 /// 验证 `QueryTask` 的参数反序列化错误能够经过 `Runtime` 返回
 #[tokio::test]
 async fn should_return_failed_when_query_task_arguments_are_invalid() {
-    let mut runtime = build_runtime_with_query_task_selector(r#"{"task_id":"13","limit":5}"#);
-    let output = runtime.handle(UserInput::Message("".to_string())).await;
+    let mut runtime = build_runtime_with_query_task_selector(r#"{"limit":"5"}"#);
+    let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Failed { message } => {
             assert!(message.contains("invalid type"));

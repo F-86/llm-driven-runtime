@@ -1,10 +1,10 @@
-/// 任务阶段枚举，用于状态机，表示“下一次 Runtime::handle 应该做什么”
+/// 任务阶段枚举，用于状态机，表示“下一次 `Runtime::handle` 应该做什么”
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskPhase {
     /// 等待 LLM 决定下一步
     NeedDecision,
 
-    /// Stage 已确定，等待生成 ToolCall 参数
+    /// Stage 已确定，等待生成 `ToolCall` 参数
     NeedArguments,
 
     /// 参数已经准备完成，等待执行 Stage
@@ -28,8 +28,12 @@ pub enum TaskPhase {
 
 impl TaskPhase {
     /// 判断是否允许迁移到目标 Phase
+    #[must_use]
     pub fn can_transition_to(&self, next: &TaskPhase) -> bool {
-        use TaskPhase::*;
+        use TaskPhase::{
+            Completed, Failed, NeedArguments, NeedDecision, NeedSummary, ReadyToExecute,
+            WaitingApproval, WaitingUserInput,
+        };
 
         match self {
             NeedDecision => matches!(

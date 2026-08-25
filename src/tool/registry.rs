@@ -14,6 +14,7 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
@@ -29,7 +30,8 @@ impl ToolRegistry {
     }
 
     /// 获取工具
+    #[must_use]
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
-        self.tools.get(name).map(|tool| tool.as_ref())
+        self.tools.get(name).map(AsRef::as_ref)
     }
 }

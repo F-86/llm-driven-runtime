@@ -6,10 +6,10 @@ mod common;
 #[tokio::test]
 async fn should_return_failed_when_selected_tool_does_not_exist() {
     let mut runtime = common::build_runtime("not_exists", "");
-    let output = runtime.handle(UserInput::Message("".to_string())).await;
+    let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Failed { message } => {
-            assert_eq!(message, "找不到工具")
+            assert_eq!(message, "找不到工具");
         }
         _ => panic!("期望 Runtime 返回 Failed"),
     }

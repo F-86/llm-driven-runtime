@@ -13,7 +13,7 @@ pub struct FixedArgumentGenerator<'a> {
 }
 
 #[async_trait::async_trait]
-impl<'a> ArgumentGenerator for FixedArgumentGenerator<'a> {
+impl ArgumentGenerator for FixedArgumentGenerator<'_> {
     async fn generate(
         &self,
         _input: &UserInput,
