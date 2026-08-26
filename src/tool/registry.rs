@@ -14,6 +14,7 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
+    /// 创建一个空的工具注册表。
     #[must_use]
     pub fn new() -> Self {
         Self {

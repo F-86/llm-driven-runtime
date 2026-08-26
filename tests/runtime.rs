@@ -5,7 +5,7 @@ mod common;
 /// 验证 `FixedToolSelector` 返回不存在的工具时，Runtime 返回失败
 #[tokio::test]
 async fn should_return_failed_when_selected_tool_does_not_exist() {
-    let mut runtime = common::build_runtime("not_exists", "");
+    let mut runtime = common::build_runtime("not_exists", serde_json::json!({}));
     let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Failed { message } => {

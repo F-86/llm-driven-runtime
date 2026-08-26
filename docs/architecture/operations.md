@@ -6,10 +6,10 @@
 
 - ReadyTaskQueue 最大容量。
 - Worker 最大并发 Task 数。
-- 单个 Stage 最大 ToolCall 数。
+- 单个 ExecutionPlan 最大 ToolCall 数。
 - 全局工具调用并发数。
 - 单个工具的并发数和速率限制。
-- 单个 Task 最大 Stage 数。
+- 单个 Task 最大 ExecutionPlan 数。
 - 单个 Task 最大工具执行次数。
 - LLM token、费用和请求次数上限。
 - 单个 Phase 和整个 Task 的超时时间。
@@ -29,7 +29,7 @@
 | LLM 调用失败 | 当前 Phase 暂时无法得到输出。 | 按 LLM 策略重试或延后 Phase。 |
 | 参数生成失败 | 当前 ToolCall 无法得到有效参数。 | 重新生成无效调用、请求用户输入或回到决策。 |
 | ToolCall 失败 | 单个工具当前参数执行失败。 | 根据工具策略重试。 |
-| Stage 失败 | 至少一个 ToolCall 重试耗尽、Unknown 或 Delta 冲突。 | 保留全部事实并进入下一次决策。 |
+| ExecutionPlan 失败 | 至少一个 ToolCall 重试耗尽、`ExecutionUnknown` 或 Delta 冲突。 | 保留全部事实并进入下一次决策。 |
 | Task 失败 | 决策明确判断无法继续，或超过硬性资源上限。 | 持久化最终错误并进入终态。 |
 | Runtime 系统失败 | 数据库、调度器或内部不变量异常。 | 不把系统错误伪装成业务失败，保留任务用于恢复。 |
 
@@ -50,7 +50,7 @@
 - `task_id`
 - `phase`
 - `phase_version`
-- `stage_id`
+- `execution_plan_id`
 - `tool_call_id`
 - `attempt`
 - `worker_id`
@@ -60,7 +60,7 @@
 - 工具结果分类
 - State 版本变化
 
-建议使用贯穿 Task、Stage 和 ToolCall 的 trace（追踪）上下文。日志中不得直接输出密钥、访问令牌和未脱敏敏感参数。
+建议使用贯穿 Task、ExecutionPlan 和 ToolCall 的 trace（追踪）上下文。日志中不得直接输出密钥、访问令牌和未脱敏敏感参数。
 
 关键指标包括：
 
@@ -87,11 +87,11 @@
 
 虽然单次 `handle` 不包含整个任务循环，但 Task 仍可能在多个 Phase 之间长期循环。Runtime 应检测：
 
-- 连续产生相同 Stage 决策。
+- 连续产生相同 ExecutionPlan 决策。
 - 使用相同参数重复创建逻辑等价 ToolCall。
 - 工具失败后未改变参数或策略就再次调用。
 - `NeedSummary` 与 `NeedDecision` 反复切换。
-- Task 已经超过 Stage、工具调用、token、费用或时间预算。
+- Task 已经超过 ExecutionPlan、工具调用、token、费用或时间预算。
 
 检测到循环后，将事实写入 State 并允许一次受限决策；仍无法退出时进入 Task 失败终态。
 
@@ -100,5 +100,5 @@
 1. 系统错误不得伪装成业务失败。
 2. 达到硬限制后不得继续自动产生工具副作用。
 3. 敏感数据不得出现在未脱敏日志和 Prompt 中。
-4. 监控指标必须能区分 Task、Stage 和 ToolCall 失败。
+4. 监控指标必须能区分 Task、ExecutionPlan 和 ToolCall 失败。
 5. Task 终态必须包含可供用户或运维理解的原因。

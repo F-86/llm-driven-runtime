@@ -135,11 +135,11 @@ HTTP 请求或客户端连接不得拥有 Worker 的生命周期。客户端断�
 
 - ReadyTaskQueue 容量限制进程内待处理任务数量。
 - Worker 并发限制同时推进的 Task 数量。
-- Tool Executor 限制 Stage 内和全局工具调用并发。
+- Tool Executor 限制 ExecutionPlan 内和全局工具调用并发。
 
 Dispatcher 不得先无限认领数据库任务再阻塞等待入队。它应先获得队列容量，再认领对应数量的 Task。
 
-为了避免复杂 Task 长期占用资源，应设置单 Phase 超时、单 Stage ToolCall 上限和 Task 总预算。长时间重试等待应通过 `next_run_at` 释放 Worker，而不是长期占用 Worker 并发名额。
+为了避免复杂 Task 长期占用资源，应设置单 Phase 超时、单 ExecutionPlan ToolCall 上限和 Task 总预算。长时间重试等待应通过 `next_run_at_ms` 释放 Worker，而不是长期占用 Worker 并发名额。
 
 ## 9. 优雅停机
 
@@ -159,4 +159,3 @@ Dispatcher 不得先无限认领数据库任务再阻塞等待入队。它应先
 4. 通知丢失不能阻止任务最终运行。
 5. 重复通知和重复队列消息必须安全。
 6. `Suspended` 和 `Terminal` Task 不得被自动认领。
-

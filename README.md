@@ -13,30 +13,36 @@
 ```mermaid
 stateDiagram-v2
     [*] --> NeedDecision
-    NeedDecision --> NeedArguments: 决策 ExecuteStage
+    NeedDecision --> NeedArguments: 决策 NeedToolCall
     NeedDecision --> NeedSummary: 决策 Finish
-    NeedDecision --> WaitingUserInput: 缺少用户输入
+    NeedDecision --> WaitingInput: 缺少用户输入
     NeedDecision --> Failed: 决策 Abort
 
     NeedArguments --> ReadyToExecute: 参数有效
-    NeedArguments --> WaitingUserInput: 需要补全或修改
+    NeedArguments --> WaitingInput: 需要补全或修改
     NeedArguments --> WaitingApproval: 写工具需要审批
+    NeedArguments --> NeedDecision: 参数生成无法继续
 
-    WaitingUserInput --> NeedArguments: 用户提供输入
+    WaitingInput --> NeedArguments: 用户提供输入
+    WaitingInput --> NeedDecision: 用户修改需求或放弃当前 ExecutionPlan
     WaitingApproval --> ReadyToExecute: 审批通过
+    WaitingApproval --> NeedArguments: 参数被修改，需要重新校验
+    WaitingApproval --> NeedDecision: 拒绝审批或修改需求
 
-    ReadyToExecute --> NeedDecision: Stage 执行结束
+    ReadyToExecute --> NeedDecision: ExecutionPlan 执行结束
+    ReadyToExecute --> NeedArguments: 参数被修改
     NeedSummary --> Completed: 最终回答已持久化
+    NeedSummary --> NeedDecision: 总结发现仍缺少事实
 
     Completed --> [*]
     Failed --> [*]
 ```
 
-决策 Phase 可以产生一个 Stage。Stage 包含一组相互独立、可以并行执行的 ToolCall：
+决策 Phase 可以产生一个 ExecutionPlan。ExecutionPlan 包含一组相互独立、可以并行执行的 ToolCall：
 
 ```mermaid
 flowchart LR
-    Decision[决策 Stage] --> Arguments[生成并持久化参数]
+    Decision[决策 ExecutionPlan] --> Arguments[生成并持久化参数]
     Arguments --> A[ToolCall A]
     Arguments --> B[ToolCall B]
     Arguments --> C[ToolCall C]
@@ -53,10 +59,10 @@ flowchart LR
 - 决策、参数生成、工具执行和最终总结分别持久化。
 - 已持久化的 LLM 输出不重复生成。
 - 已成功的 ToolCall 不重复执行。
-- Stage 中只允许相互独立的 ToolCall 并行运行。
+- ExecutionPlan 中只允许相互独立的 ToolCall 并行运行。
 - ToolCall 不直接修改共享 State，只返回结构化结果和 `StateDelta`。
-- Stage 结束后统一、确定性地合并 StateDelta。
-- Stage 部分失败时保留成功结果，并由下一次 LLM 决策如何继续。
+- ExecutionPlan 结束后统一、确定性地合并 StateDelta。
+- ExecutionPlan 部分失败时保留成功结果，并由下一次 LLM 决策如何继续。
 - 队列采用 at-least-once（至少一次）语义，写工具通过幂等键避免重复副作用。
 - 数据库是唯一事实来源，内存队列只负责调度和背压。
 
@@ -73,10 +79,10 @@ flowchart LR
 
 目标架构中尚未实现的主要能力包括：
 
-- Task、Phase、Stage 和 ToolCall 持久化模型。
+- Task、Phase、ExecutionPlan 和 ToolCall 持久化模型。
 - 一次 `handle` 只推进一个 Phase 的状态机。
-- Stage 内有界并行工具执行。
-- StateDelta 和统一 StateReducer。
+- ExecutionPlan 内有界并行工具执行。
+- StateDelta 的统一应用和 StateReducer。
 - 数据库 Repository、事务、Lease 和崩溃恢复。
 - 有界任务队列、Dispatcher 和 Worker Pool。
 - 工具重试、幂等和资源限制。
@@ -92,7 +98,7 @@ flowchart LR
 | [架构总览](docs/architecture/README.md) | 项目目标、核心概念、总体架构和架构不变量。 |
 | [Runtime 运行模型](docs/architecture/runtime-model.md) | `Runtime::handle`、Task Phase 状态机以及各 Phase 的职责。 |
 | [调度模型](docs/architecture/scheduling.md) | 有界队列、Dispatcher、Worker、Lease 和背压。 |
-| [工具执行模型](docs/architecture/tool-execution.md) | ToolCall、Stage 并行、参数、重试、幂等和 StateDelta。 |
+| [工具执行模型](docs/architecture/tool-execution.md) | ToolCall、ExecutionPlan 并行、参数、重试、幂等和 StateDelta。 |
 | [持久化与恢复](docs/architecture/persistence-and-recovery.md) | 数据模型、事务边界、一致性和崩溃恢复。 |
 | [运行保障](docs/architecture/operations.md) | 资源控制、失败语义、可观测性和安全。 |
 | [实施计划](docs/architecture/implementation-plan.md) | 迁移顺序、里程碑、测试策略和待决策项。 |

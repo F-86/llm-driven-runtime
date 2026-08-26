@@ -17,7 +17,7 @@ impl ArgumentGenerator for EmptyArgumentGenerator {
         _input: &UserInput,
         _state: &State,
         _tool: &dyn Tool,
-    ) -> Result<String, ArgumentGenerationError> {
-        Ok("{}".to_string())
+    ) -> Result<serde_json::Value, ArgumentGenerationError> {
+        Ok(serde_json::json!({}))
     }
 }

@@ -10,8 +10,8 @@ mod common;
 
 /// 构建 `Runtime` 对象，这个 `Runtime` 使用 `FixedArgumentGenerator`，选择 `QueryTask` 工具
 fn build_runtime_with_query_task_selector(
-    arg: &'_ str,
-) -> Runtime<FixedToolSelector<'_>, FixedArgumentGenerator<'_>> {
+    arg: serde_json::Value,
+) -> Runtime<FixedToolSelector<'static>, FixedArgumentGenerator> {
     common::build_runtime(QueryTask.name(), arg)
 }
 
@@ -24,7 +24,7 @@ fn assert_success_result(result: &serde_json::Value, limit: u32) {
 /// 验证 `Runtime` 能成功调用 `QueryTask` 工具
 #[tokio::test]
 async fn should_execute_query_task_through_runtime() {
-    let mut runtime = build_runtime_with_query_task_selector(r#"{"limit":5}"#);
+    let mut runtime = build_runtime_with_query_task_selector(serde_json::json!({"limit":5}));
     let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Completed { message } => {
@@ -41,7 +41,7 @@ async fn should_execute_query_task_through_runtime() {
 /// 验证 `QueryTask` 的默认参数能够通过 `Runtime` 生效
 #[tokio::test]
 async fn should_execute_query_task_default_through_runtime() {
-    let mut runtime = build_runtime_with_query_task_selector(r"{}");
+    let mut runtime = build_runtime_with_query_task_selector(serde_json::json!({}));
     let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Completed { message } => {
@@ -58,7 +58,7 @@ async fn should_execute_query_task_default_through_runtime() {
 /// 验证 `QueryTask` 的参数反序列化错误能够经过 `Runtime` 返回
 #[tokio::test]
 async fn should_return_failed_when_query_task_arguments_are_invalid() {
-    let mut runtime = build_runtime_with_query_task_selector(r#"{"limit":"5"}"#);
+    let mut runtime = build_runtime_with_query_task_selector(serde_json::json!({"limit": "5"}));
     let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Failed { message } => {

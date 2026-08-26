@@ -18,11 +18,13 @@ use llm_driven_runtime::{
 ///
 /// * `tool_name` - 固定选择的工具
 /// * `arg` - 固定生成的参数
-pub fn build_runtime<'a, 'b>(
-    tool_name: &'a str,
-    arg: &'b str,
-) -> Runtime<FixedToolSelector<'a>, FixedArgumentGenerator<'b>> {
-    let state = State {};
+pub fn build_runtime(
+    tool_name: &str,
+    arg: serde_json::Value,
+) -> Runtime<FixedToolSelector<'_>, FixedArgumentGenerator> {
+    let state = State {
+        data: serde_json::Value::Null,
+    };
 
     let mut tool_registry = ToolRegistry::new();
     tool_registry.register(GetRuntimeStatus);

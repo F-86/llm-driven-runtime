@@ -19,10 +19,11 @@ fn should_register_get_runtime_status_tool() {
 async fn should_execute_get_runtime_status_tool() {
     let tool = GetRuntimeStatus;
 
-    let state = State {};
+    let state = State {
+        data: serde_json::Value::Null,
+    };
 
-    let result = tool.execute("{}".to_string(), &state).await.unwrap();
-    let result = serde_json::from_str::<serde_json::Value>(&result.output).unwrap();
+    let result = tool.execute(serde_json::json!({}), &state).await.unwrap();
 
-    assert_eq!(result["status"], "normal");
+    assert_eq!(result.output["status"], "normal");
 }

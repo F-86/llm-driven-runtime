@@ -1,3 +1,5 @@
+//! 为工具实现生成参数 Schema 的过程宏。
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{ItemImpl, Type, parse_macro_input};

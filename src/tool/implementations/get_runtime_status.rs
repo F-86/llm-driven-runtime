@@ -1,9 +1,6 @@
 use crate::{
-    state::State,
-    tool::{
-        Tool,
-        definition::{ToolError, ToolResult},
-    },
+    state::{State, StateDelta},
+    tool::{Tool, ToolError, ToolMetadata, ToolSuccess},
 };
 
 /// `GetRuntimeStatus` 工具的参数
@@ -25,14 +22,22 @@ impl Tool for GetRuntimeStatus {
         "获取当前运行时的基本状态"
     }
 
-    async fn execute(&self, arg: String, _state: &State) -> Result<ToolResult, ToolError> {
-        let _arg: GetRuntimeStatusArg = serde_json::from_str(&arg)?;
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::read_only(vec![])
+    }
 
-        Ok(ToolResult {
+    async fn execute(
+        &self,
+        arg: serde_json::Value,
+        _state: &State,
+    ) -> Result<ToolSuccess, ToolError> {
+        let _arg: GetRuntimeStatusArg = serde_json::from_value(arg)?;
+
+        Ok(ToolSuccess {
             output: serde_json::json!({
                 "status": "normal"
-            })
-            .to_string(),
+            }),
+            state_delta: StateDelta { mutations: vec![] },
         })
     }
 }

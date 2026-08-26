@@ -8,23 +8,26 @@
 
 ## 2. 从当前实现迁移
 
-当前实现可以按以下顺序演进，避免一次性重写全部组件：
+当前代码已经完成以下基础领域类型和单工具链路：
 
-1. 将单工具选择结果扩展为 `Decision`，支持 `ExecuteStage`、`Finish`、`NeedUserInput` 和 `Abort`。
-2. 引入 Task、Phase、Stage 和 ToolCall 的领域类型，但先使用内存 Repository 验证状态机。
-3. 将当前 `handle` 拆成 Phase Dispatcher 和独立 Handler。
-4. 将工具参数从字符串逐步改为结构化 `serde_json::Value`，保持 Schema 校验。
-5. 将 `ToolResult` 扩展为结构化结果和 StateDelta。
-6. 实现有界并行 Execution Handler、结果持久化和统一 StateReducer。
-7. 引入数据库 Repository、事务、版本和 Lease。
-8. 引入有界任务队列、Dispatcher 和周期恢复。
-9. 增加幂等、重试、资源限制和可观测性。
-10. 最后补充人工补参和审批恢复接口。
+1. 定义 `Decision`，支持 `NeedToolCall`、`Finish`、`NeedUserInput` 和 `Abort`。
+2. 定义 Task、Phase、ExecutionPlan 和 ToolCall 领域类型。
+3. 使用结构化 `serde_json::Value` 表示工具参数，并保留 Schema 校验。
+4. 定义包含结构化输出和 StateDelta 的 `ToolSuccess`。
+
+后续可以按以下顺序演进，避免一次性重写全部组件：
+
+1. 将当前 `handle` 拆成 Phase Dispatcher 和独立 Handler。
+2. 实现有界并行 Execution Handler、结果持久化和统一 StateReducer。
+3. 引入数据库 Repository、事务、版本和 Lease。
+4. 引入有界任务队列、Dispatcher 和周期恢复。
+5. 增加幂等、重试、资源限制和可观测性。
+6. 最后补充人工补参和审批恢复接口。
 
 ```mermaid
 flowchart LR
     M0[冻结核心契约] --> M1[内存状态机]
-    M1 --> M2[Stage 并行与 StateDelta]
+    M1 --> M2[ExecutionPlan 并行与 StateDelta]
     M2 --> M3[持久化与恢复]
     M3 --> M4[队列与 Dispatcher]
     M4 --> M5[重试、幂等与限制]
@@ -38,7 +41,7 @@ flowchart LR
 
 交付物：
 
-- `TaskPhase`、`SchedulingStatus`、`Decision`、`Stage`、`ToolCall` 和 `HandleOutcome` 的最终定义。
+- `TaskPhase`、`SchedulingStatus`、`Decision`、`ExecutionPlan`、`ToolCall` 和 `HandleOutcome` 的最终定义。
 - Tool 成功、失败、重试和 StateDelta 接口。
 - Phase 状态迁移表和非法迁移规则。
 - 第一版范围和默认资源限制。
@@ -74,13 +77,13 @@ flowchart LR
 - 已持久化的阶段输出会被复用。
 - 非法 Phase 迁移被确定性拒绝。
 
-## 5. 里程碑 2：Stage 并行和 StateDelta
+## 5. 里程碑 2：ExecutionPlan 并行和 StateDelta
 
 目标是实现当前设计的核心价值。
 
 交付物：
 
-- 多 ToolCall Stage。
+- 多 ToolCall ExecutionPlan。
 - 有界异步并行执行。
 - 每个 ToolCall 独立结果记录。
 - StateReducer 和稳定合并顺序。
@@ -88,10 +91,10 @@ flowchart LR
 
 验收标准：
 
-- 同一 Stage 的独立工具能够并行执行。
+- 同一 ExecutionPlan 的独立工具能够并行执行。
 - ToolCall 不直接修改 State。
 - 部分失败时保留成功结果。
-- Stage 结束后只提交一次 State。
+- ExecutionPlan 结束后只提交一次 State。
 - 不同并发完成顺序得到相同 State。
 
 决策门：
@@ -154,10 +157,10 @@ flowchart LR
 交付物：
 
 - 工具级 RetryPolicy。
-- attempt、next_retry_at 和错误分类。
+- attempt、next_retry_at_ms 和错误分类。
 - 稳定幂等键和 ExecutionUnknown。
-- Task、Stage、工具、时间、token 和费用限制。
-- 重复 Stage 和重复 ToolCall 检测。
+- Task、ExecutionPlan、工具、时间、token 和费用限制。
+- 重复 ExecutionPlan 和重复 ToolCall 检测。
 
 验收标准：
 
@@ -203,7 +206,7 @@ flowchart LR
 
 交付物：
 
-- `WaitingUserInput` 和 `WaitingApproval` 的持久化。
+- `WaitingInput` 和 `WaitingApproval` 的持久化。
 - 参数 revision 和审批失效规则。
 - 第一版明确的“不支持继续交互”响应。
 - 后续补参、审批和拒绝接口设计。
@@ -230,7 +233,7 @@ flowchart LR
 ### 11.2 并发测试
 
 - 同一 Task 被多个 Worker 同时认领。
-- Stage 中多个 ToolCall 并行完成顺序不同。
+- ExecutionPlan 中多个 ToolCall 并行完成顺序不同。
 - StateDelta 使用稳定顺序合并。
 - 队列容量达到上限时数据库任务不丢失。
 
@@ -248,7 +251,7 @@ flowchart LR
 
 - 已完成 ToolCall 不会从成功状态回退。
 - Task Phase version 单调递增。
-- 同一 Stage 的 StateDelta 最多提交一次。
+- 同一 ExecutionPlan 的 StateDelta 最多提交一次。
 - 同一参数 revision 的幂等键保持稳定。
 - Completed 和 Failed 状态不会被自动调度。
 
@@ -265,11 +268,11 @@ flowchart LR
 以下事项不阻塞架构文档，但在对应里程碑开始前需要决定：
 
 1. 第一版使用哪种数据库和迁移工具。
-2. State 是强类型领域结构、通用 JSON，还是两者结合。
-3. StateMutation 采用领域事件、JSON Patch，还是受限操作集合。
-4. 参数生成是一次 LLM 调用生成整个 Stage，还是按 ToolCall 分别调用。
+2. 当前实现使用通用 JSON；目标架构最终采用强类型领域结构、通用 JSON，还是两者结合。
+3. 当前实现采用受限的 StateMutation 操作集合；目标架构是否扩展为领域事件或 JSON Patch，仍待决定。
+4. 当前原型按单个 ToolCall 生成参数；目标架构是一次 LLM 调用生成整个 ExecutionPlan，还是按 ToolCall 分别调用。
 5. 参数校验失败时允许多少次 LLM 纠错。
-6. Stage 并行安全第一版是否仅允许只读工具并行。
+6. ExecutionPlan 并行安全第一版是否仅允许只读工具并行。
 7. ReadyTaskQueue、Worker 和 Tool Executor 的默认容量。
 8. Lease 时长、心跳间隔和默认重试退避。
 9. 第一版 Repository 是先实现内存版本，还是直接接入数据库。
@@ -288,4 +291,3 @@ flowchart LR
 5. 运行当前工作区全部测试。
 6. 对照[架构不变量](README.md#8-架构不变量)复核。
 7. 更新架构文档中已经发生变化的契约。
-

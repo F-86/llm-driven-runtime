@@ -9,7 +9,7 @@ mod common;
 /// 验证 `Runtime` 能成功调用 `GetRuntimeStatus` 工具
 #[tokio::test]
 async fn should_execute_get_runtime_status_through_runtime() {
-    let mut runtime = common::build_runtime(GetRuntimeStatus.name(), "{}");
+    let mut runtime = common::build_runtime(GetRuntimeStatus.name(), serde_json::json!({}));
     let output = runtime.handle(UserInput::Message(String::new())).await;
     match output {
         RuntimeOutput::Completed { message } => {

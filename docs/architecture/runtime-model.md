@@ -4,7 +4,7 @@
 
 `Runtime::handle` 每次只推进一个持久化 Phase。它不负责在一次调用中循环到任务最终完成。
 
-建议的概念接口如下：
+目标架构的概念接口如下。当前单工具原型仍使用 `UserInput` 作为输入，并返回 `RuntimeOutput`；这里的接口用于描述后续持久化运行时。
 
 ```rust
 pub async fn handle(
@@ -44,9 +44,9 @@ match task.phase {
     TaskPhase::NeedArguments => argument_handler.handle(context).await,
     TaskPhase::ReadyToExecute => execution_handler.handle(context).await,
     TaskPhase::NeedSummary => summary_handler.handle(context).await,
-    TaskPhase::WaitingUserInput
-    | TaskPhase::WaitingApproval
-    | TaskPhase::Completed
+    TaskPhase::WaitingInput
+    | TaskPhase::WaitingApproval => HandleOutcome::Suspended,
+    TaskPhase::Completed
     | TaskPhase::Failed => HandleOutcome::Stale,
 }
 ```
@@ -59,21 +59,22 @@ Phase Handler 之间不通过进程内临时对象传递关键结果。每个 Ph
 stateDiagram-v2
     [*] --> NeedDecision: 创建任务
 
-    NeedDecision --> NeedArguments: 决策 ExecuteStage
+    NeedDecision --> NeedArguments: 决策 NeedToolCall
     NeedDecision --> NeedSummary: 决策 Finish
-    NeedDecision --> WaitingUserInput: 决策 NeedUserInput
+    NeedDecision --> WaitingInput: 决策 NeedUserInput
     NeedDecision --> Failed: 决策 Abort
 
     NeedArguments --> ReadyToExecute: 参数完整且无需审批
-    NeedArguments --> WaitingUserInput: 参数缺失或需要修改
+    NeedArguments --> WaitingInput: 参数缺失或需要修改
     NeedArguments --> WaitingApproval: 写工具需要审批
     NeedArguments --> NeedDecision: 参数生成无法继续
 
-    WaitingUserInput --> NeedArguments: 用户补全或修改参数
+    WaitingInput --> NeedArguments: 用户补全或修改参数
+    WaitingInput --> NeedDecision: 用户修改需求或放弃当前执行计划
     WaitingApproval --> ReadyToExecute: 审批通过
     WaitingApproval --> NeedDecision: 拒绝或修改需求
 
-    ReadyToExecute --> NeedDecision: Stage 执行结束
+    ReadyToExecute --> NeedDecision: ExecutionPlan 执行结束
     ReadyToExecute --> NeedArguments: 参数被修改
 
     NeedSummary --> Completed: 最终回答已持久化
@@ -101,23 +102,21 @@ pub enum SchedulingStatus {
 
 ```rust
 pub enum Decision {
-    ExecuteStage {
-        calls: Vec<PlannedToolCall>,
+    NeedToolCall {
+        tool_call_plans: Vec<ToolCallPlan>,
     },
     Finish,
-    NeedUserInput {
-        message: String,
-    },
+    NeedUserInput,
     Abort {
         reason: String,
     },
 }
 ```
 
-`PlannedToolCall` 只描述工具选择和本次调用的目的，不包含最终参数：
+`ToolCallPlan` 只描述工具选择和本次调用的目的，不包含最终参数。`Decision` 是 LLM 的原始决策，应作为独立的决策记录持久化；`ExecutionPlan` 只保存 Runtime 校验后的执行计划和工具调用：
 
 ```rust
-pub struct PlannedToolCall {
+pub struct ToolCallPlan {
     pub call_key: String,
     pub tool_name: String,
     pub purpose: String,
@@ -129,15 +128,15 @@ pub struct PlannedToolCall {
 - 输出结构符合 Schema。
 - 工具存在且用户有权限使用。
 - 工具当前可调用。
-- 同一 Stage 内的 ToolCall 不依赖彼此的输出。
-- 同一 Stage 内不存在已知资源读写冲突。
-- Stage 大小没有超过配置上限。
+- 同一 ExecutionPlan 内的 ToolCall 不依赖彼此的输出。
+- 同一 ExecutionPlan 内不存在已知资源读写冲突。
+- ExecutionPlan 大小没有超过配置上限。
 
-校验成功后，Runtime 在一个事务中持久化 Stage、PlannedToolCall 和 Phase 迁移。已经持久化的决策不得再次调用 LLM 生成。
+校验成功后，Runtime 在一个事务中持久化决策记录、ExecutionPlan、ToolCall 和 Phase 迁移。已经持久化的决策不得再次调用 LLM 生成。
 
 ## 5. 参数生成 Phase
 
-参数生成 Phase 为 Stage 中尚未生成有效参数的 PlannedToolCall 生成参数。
+参数生成 Phase 为 ExecutionPlan 中尚未生成有效参数的 ToolCall 生成参数。
 
 基本规则：
 
@@ -145,7 +144,7 @@ pub struct PlannedToolCall {
 - 每个 ToolCall 的有效参数独立持久化。
 - 已经持久化并通过校验的参数不得重新生成。
 - 一个 ToolCall 的参数失败，不应导致其他已成功参数被重新生成。
-- 参数需要用户补全时，保存当前草稿、缺失字段和原因，并进入 `WaitingUserInput`。
+- 参数需要用户补全时，保存当前草稿、缺失字段和原因，并进入 `WaitingInput`。
 - 写工具需要审批时，完整参数持久化后进入 `WaitingApproval`。
 
 参数校验至少包括：
@@ -160,21 +159,21 @@ pub struct PlannedToolCall {
 
 ## 6. 工具执行 Phase
 
-执行 Phase 加载当前 Stage 中尚未成功的 ToolCall，并通过有界执行器并发执行。详细的并行、重试和 StateDelta 规则见[工具执行](tool-execution.md)。
+执行 Phase 加载当前 ExecutionPlan 中尚未成功的 ToolCall，并通过有界执行器并发执行。详细的并行、重试和 StateDelta 规则见[工具执行](tool-execution.md)。
 
 ```mermaid
 flowchart TD
-    Load[加载当前 Stage 和 ToolCall] --> Filter[过滤已成功或未到重试时间的调用]
+    Load[加载当前 ExecutionPlan 和 ToolCall] --> Filter[过滤已成功或未到重试时间的调用]
     Filter --> Execute[有界并发执行]
     Execute --> Persist[每个调用独立持久化结果或错误]
     Persist --> Barrier{全部调用到达终态?}
     Barrier -- 否 --> Deferred[保存下次运行时间并延后任务]
     Barrier -- 是 --> Reduce[统一校验并合并 StateDelta]
-    Reduce --> Commit[事务提交 State 和 Stage 结果]
+    Reduce --> Commit[事务提交 State 和 ExecutionPlan 结果]
     Commit --> Decision[Task 进入 NeedDecision]
 ```
 
-执行 Phase 可以在 Rust 异步任务中等待当前 Stage 的 ToolCall 完成。`await` 不会让 OS 线程空转，也不要求把 Phase 拆成回调事件链。
+执行 Phase 可以在 Rust 异步任务中等待当前 ExecutionPlan 的 ToolCall 完成。`await` 不会让 OS 线程空转，也不要求把 Phase 拆成回调事件链。
 
 ## 7. 最终总结 Phase
 
@@ -204,7 +203,7 @@ Phase 的纯校验、解析和对象转换属于当前 Handler 内部实现，�
 
 - LLM 或基础设施的临时错误可以延后当前 Phase，不推进状态。
 - 参数无法生成时可以进入人工输入状态，或带着失败事实回到决策。
-- Stage 失败后回到决策，不直接将 Task 标记为失败。
+- ExecutionPlan 失败后回到决策，不直接将 Task 标记为失败。
 - 只有决策明确返回 `Abort`，或者 Task 达到不可恢复的硬限制，才进入 `Failed`。
 - `Completed` 和 `Failed` 都是不可由 Dispatcher 自动恢复的终态。
 

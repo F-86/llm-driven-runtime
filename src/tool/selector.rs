@@ -1,5 +1,6 @@
 use crate::{state::State, tool::registry::ToolRegistry, user_input::UserInput};
 
+/// 固定工具选择器的测试实现。
 pub mod fixed;
 
 pub use fixed::FixedToolSelector;
@@ -18,10 +19,12 @@ pub trait ToolSelector {
 
 /// 工具选择结果
 pub struct ToolSelection {
+    /// 被选中的工具名称
     pub tool_name: String,
 }
 
 /// 工具选择错误
 pub struct SelectionError {
+    /// 工具选择失败的原因
     pub message: String,
 }

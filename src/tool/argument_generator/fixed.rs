@@ -8,18 +8,19 @@ use crate::{
 };
 
 /// 固定参数生成器，用于测试
-pub struct FixedArgumentGenerator<'a> {
-    pub arg: &'a str,
+pub struct FixedArgumentGenerator {
+    /// 始终返回的工具参数
+    pub arg: serde_json::Value,
 }
 
 #[async_trait::async_trait]
-impl ArgumentGenerator for FixedArgumentGenerator<'_> {
+impl ArgumentGenerator for FixedArgumentGenerator {
     async fn generate(
         &self,
         _input: &UserInput,
         _state: &State,
         _tool: &dyn Tool,
-    ) -> Result<String, ArgumentGenerationError> {
-        Ok(self.arg.to_string())
+    ) -> Result<serde_json::Value, ArgumentGenerationError> {
+        Ok(self.arg.clone())
     }
 }

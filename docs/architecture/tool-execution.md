@@ -1,12 +1,12 @@
 # 工具执行模型
 
-## 1. Stage 与 ToolCall
+## 1. ExecutionPlan 与 ToolCall
 
-Stage 是一次决策产生的可并行工具集合，也是结果统一进入 State 前的 barrier（屏障）单元。
+目标 Runtime 校验后的 ExecutionPlan 是一组可并行工具调用，也是结果统一进入 State 前的 barrier（屏障）单元。
 
 ```mermaid
 flowchart LR
-    Decision[决策 Stage] --> Arguments[生成并持久化参数]
+    Decision[生成 ExecutionPlan] --> Arguments[生成并持久化参数]
     Arguments --> A[ToolCall A]
     Arguments --> B[ToolCall B]
     Arguments --> C[ToolCall C]
@@ -17,9 +17,9 @@ flowchart LR
     Reducer --> Next[下一次决策]
 ```
 
-一个 Stage 中的 ToolCall 必须满足：
+一个 ExecutionPlan 中的 ToolCall 必须满足：
 
-- 不需要读取同一 Stage 中其他 ToolCall 的结果。
+- 不需要读取同一 ExecutionPlan 中其他 ToolCall 的结果。
 - 不存在 Runtime 已知的互斥资源写入。
 - 所有调用都能基于同一 State 版本生成参数。
 
@@ -39,17 +39,17 @@ pub struct ToolMetadata {
 }
 ```
 
-第一版可以先实现保守校验：只允许只读工具并行，写工具默认独占 Stage。后续再扩展资源级冲突判断。
+第一版可以先实现保守校验：只允许只读工具并行，写工具默认独占 ExecutionPlan。后续再扩展资源级冲突判断。
 
 工具选择阶段校验并行安全，工具执行前仍需重新校验权限、参数 revision 和业务前置条件。
 
 ## 3. 参数生成
 
-参数生成 Phase 为 Stage 中尚未生成有效参数的 PlannedToolCall 生成参数。具体 Phase 迁移见[运行模型](runtime-model.md)。
+参数生成 Phase 为 ExecutionPlan 中尚未生成有效参数的 ToolCall 生成参数。具体 Phase 迁移见[运行模型](runtime-model.md)。
 
 参数生成遵循以下规则：
 
-- 所有参数都基于 Stage 记录的同一个 State 版本生成。
+- 所有参数都基于 ExecutionPlan 记录的同一个 State 版本生成。
 - 每个 ToolCall 参数独立持久化。
 - 已经持久化并通过校验的参数不重新生成。
 - 参数生成失败只影响对应 ToolCall，不清除其他有效参数。
@@ -57,40 +57,40 @@ pub struct ToolMetadata {
 
 参数校验包括 JSON、Schema、字段、类型、范围、权限、业务前置条件和工具可调用性校验。
 
-参数生成是一次 LLM 调用生成整个 Stage，还是按 ToolCall 分别调用，属于实现前待决策项。无论选择哪种方式，都必须能够复用已经持久化的有效参数。
+当前原型按单个 ToolCall 生成参数；目标架构是一次 LLM 调用生成整个 ExecutionPlan，还是按 ToolCall 分别调用，仍属于待决策项。无论选择哪种方式，都必须能够复用已经持久化的有效参数。
 
 ## 4. ToolCall 执行
 
-执行 Phase 加载当前 Stage 中尚未成功的 ToolCall，并通过有界执行器并发执行。
+执行 Phase 加载当前 ExecutionPlan 中尚未成功的 ToolCall，并通过有界执行器并发执行。
 
 执行规则：
 
-- 工具只读取 Stage 开始时确定的 State 快照。
+- 工具只读取 ExecutionPlan 开始时确定的 State 快照。
 - 工具不得直接修改共享 State。
 - 成功结果包含结构化输出和 StateDelta。
 - 每个 ToolCall 完成后立即持久化，避免其他 ToolCall 失败时丢失成功结果。
 - 执行 Phase 等待所有 ToolCall 成功、重试耗尽或进入无法确定状态。
-- Stage 结束后统一更新 State。
-- 即使 Stage 部分失败，成功结果和成功产生的 StateDelta 仍然保留。
-- 重试耗尽只令 Stage 失败；Task 进入 `NeedDecision`，由 LLM 决定下一步。
+- ExecutionPlan 结束后统一更新 State。
+- 即使 ExecutionPlan 部分失败，成功结果和成功产生的 StateDelta 仍然保留。
+- 重试耗尽只令 ExecutionPlan 失败；Task 进入 `NeedDecision`，由 LLM 决定下一步。
 
 对于异步 I/O 工具，执行器应使用 Rust Future 的有界并发能力。CPU 密集型工具和阻塞 SDK 应分别使用计算线程池或阻塞线程池，不能阻塞 Tokio 执行线程。
 
-## 5. ToolResult 与 StateDelta
+## 5. ToolSuccess 与 StateDelta
 
 目标工具接口应返回结构化结果：
 
 ```rust
 pub struct ToolSuccess {
     pub output: serde_json::Value,
-    pub state_delta: Vec<StateMutation>,
+    pub state_delta: StateDelta,
 }
 ```
 
-`StateMutation` 的具体表示可以在实现前决定，但必须满足：
+当前代码将 `StateMutation` 表示为受限的 `Set` 和 `Remove` 操作集合。无论后续是否扩展操作类型，都必须满足：
 
 - 可以在不重新执行工具的情况下重放。
-- 可以检测同一 Stage 内的冲突。
+- 可以检测同一 ExecutionPlan 内的冲突。
 - 可以校验工具是否越权修改 State。
 - 应用顺序确定且可审计。
 
@@ -98,13 +98,13 @@ pub struct ToolSuccess {
 
 ## 6. StateReducer
 
-StateReducer 按稳定顺序合并 StateDelta，例如按 `call_key` 或 ToolCall ID 排序。禁止使用并发完成顺序作为合并顺序。
+StateReducer 按稳定顺序合并 StateDelta，例如按 `plan.call_key` 或 ToolCall ID 排序。禁止使用并发完成顺序作为合并顺序。
 
-Stage 部分失败时：
+ExecutionPlan 部分失败时：
 
 - 应用所有无冲突的成功 StateDelta。
 - 将失败工具、最终错误、尝试次数和失败分类写入执行事实。
-- 将 Stage 标记为失败。
+- 将 ExecutionPlan 标记为失败。
 - Task 进入 `NeedDecision`，不直接进入终态失败。
 
 如果多个 StateDelta 发生冲突：
@@ -112,7 +112,7 @@ Stage 部分失败时：
 - 不采用最后写入覆盖。
 - ToolCall 原始结果仍然保留。
 - 冲突的 StateDelta 不自动应用。
-- 记录 `StateDeltaConflict` 并令 Stage 失败。
+- 记录 `StateReduceError::Conflict` 并令 ExecutionPlan 失败。
 - 下一次决策根据工具结果和冲突事实决定如何继续。
 
 State 和执行记录的持久化事务见[持久化与恢复](persistence-and-recovery.md)。
@@ -123,7 +123,7 @@ State 和执行记录的持久化事务见[持久化与恢复](persistence-and-r
 
 ```rust
 pub enum RetryDecision {
-    RetryAfter(std::time::Duration),
+    RetryAfter { delay_ms: u64 },
     Stop,
 }
 
@@ -144,9 +144,9 @@ pub trait ToolRetryPolicy {
 | 权限和确定性业务错误 | 不重试，记录失败事实。 |
 | 临时网络错误 | 按工具配置重试。 |
 | 服务限流 | 根据服务建议或指数退避重试。 |
-| 外部结果无法确认 | 标记为 Unknown，不自动重复高风险写操作。 |
+| 外部结果无法确认 | 标记为 `ExecutionUnknown`，不自动重复高风险写操作。 |
 
-短时间退避可以在当前异步执行 Phase 内 `await`。较长退避应保存 `next_retry_at`，释放 Worker，并在未来重新调度同一个执行 Phase。
+短时间退避可以在当前异步执行 Phase 内 `await`。较长退避应保存 `next_retry_at_ms`，释放 Worker，并在未来重新调度同一个执行 Phase。
 
 ## 8. at-least-once 与幂等
 
@@ -155,7 +155,7 @@ pub trait ToolRetryPolicy {
 每个写 ToolCall 使用稳定幂等键，建议由以下信息生成：
 
 ```text
-task_id + stage_id + tool_call_id + argument_revision
+task_id + execution_plan_id + tool_call_id + argument_revision
 ```
 
 恢复时：
@@ -190,10 +190,10 @@ LLM 调用也存在“响应已返回但尚未持久化时崩溃”的窗口。�
 
 ## 10. 工具执行不变量
 
-1. Stage 中所有 ToolCall 使用同一 State 版本。
+1. ExecutionPlan 中所有 ToolCall 使用同一 State 版本。
 2. 已成功的 ToolCall 不重新执行。
 3. 相同参数 revision 使用稳定幂等键。
 4. 工具不直接修改共享 State。
 5. 并发完成顺序不影响最终 State。
 6. 部分失败不丢弃成功工具产生的事实。
-7. 重试耗尽令 Stage 失败，不直接令 Task 失败。
+7. 重试耗尽令 ExecutionPlan 失败，不直接令 Task 失败。

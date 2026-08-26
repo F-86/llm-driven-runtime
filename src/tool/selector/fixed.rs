@@ -6,6 +6,7 @@ use crate::{
 
 /// 固定的工具选择器，用于测试
 pub struct FixedToolSelector<'a> {
+    /// 始终返回的工具名称
     pub tool_name: &'a str,
 }
 

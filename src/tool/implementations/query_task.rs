@@ -1,9 +1,6 @@
 use crate::{
-    state::State,
-    tool::{
-        Tool,
-        definition::{ToolError, ToolResult},
-    },
+    state::{State, StateDelta},
+    tool::{Tool, ToolError, ToolErrorKind, ToolMetadata, ToolSuccess},
 };
 
 /// `QueryTask` 工具的参数
@@ -34,12 +31,21 @@ impl Tool for QueryTask {
         "查询任务信息"
     }
 
-    async fn execute(&self, arg: String, _state: &State) -> Result<ToolResult, ToolError> {
-        let arg: QueryTaskArg = serde_json::from_str(&arg)?;
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::read_only(vec![])
+    }
+
+    async fn execute(
+        &self,
+        arg: serde_json::Value,
+        _state: &State,
+    ) -> Result<ToolSuccess, ToolError> {
+        let arg: QueryTaskArg = serde_json::from_value(arg)?;
 
         // 手动校验 limit 的业务范围
         if !(1..=100).contains(&arg.limit) {
             return Err(ToolError {
+                kind: ToolErrorKind::ArgumentValidation,
                 message: format!(
                     "limit 字段的值超出范围，期望：[1, 100]，实际：{}",
                     arg.limit
@@ -47,12 +53,12 @@ impl Tool for QueryTask {
             });
         }
 
-        Ok(ToolResult {
+        Ok(ToolSuccess {
             output: serde_json::json!({
                 "limit": arg.limit,
                 "status": "normal",
-            })
-            .to_string(),
+            }),
+            state_delta: StateDelta { mutations: vec![] },
         })
     }
 }
@@ -61,10 +67,12 @@ impl Tool for QueryTask {
 mod tests {
     use crate::{
         state::State,
-        tool::{QueryTask, Tool},
+        tool::{QueryTask, Tool, ToolErrorKind},
     };
 
-    const STATE: &State = &State {};
+    const STATE: &State = &State {
+        data: serde_json::Value::Null,
+    };
 
     /// 成功执行，显式传入 `limit`
     ///
@@ -76,14 +84,12 @@ mod tests {
     #[tokio::test]
     async fn should_execute_query_task() {
         let result = QueryTask
-            .execute(r#"{"limit":5}"#.to_string(), STATE)
+            .execute(serde_json::json!({"limit": 5}), STATE)
             .await
             .unwrap();
 
-        let output: serde_json::Value = serde_json::from_str(&result.output).unwrap();
-
-        assert_eq!(output["limit"], 5);
-        assert_eq!(output["status"], "normal");
+        assert_eq!(result.output["limit"], 5);
+        assert_eq!(result.output["status"], "normal");
     }
 
     /// 成功使用默认值
@@ -91,11 +97,12 @@ mod tests {
     /// 验证不传 `limit` 时，Serde 会使用默认值 `10`
     #[tokio::test]
     async fn should_use_default_limit() {
-        let result = QueryTask.execute(r"{}".to_string(), STATE).await.unwrap();
+        let result = QueryTask
+            .execute(serde_json::json!({}), STATE)
+            .await
+            .unwrap();
 
-        let output: serde_json::Value = serde_json::from_str(&result.output).unwrap();
-
-        assert_eq!(output["limit"], 10);
+        assert_eq!(result.output["limit"], 10);
     }
 
     /// 未知字段失败
@@ -104,22 +111,12 @@ mod tests {
     #[tokio::test]
     async fn should_reject_unknown_fields() {
         let error = QueryTask
-            .execute(r#"{"unknown":true}"#.to_string(), STATE)
+            .execute(serde_json::json!({"unknown": true}), STATE)
             .await
             .unwrap_err();
 
+        assert_eq!(error.kind, ToolErrorKind::ArgumentDeserialization);
         assert!(error.message.contains("unknown field"));
-    }
-
-    /// 非法 JSON 字符串
-    #[tokio::test]
-    async fn should_reject_invalid_json() {
-        let error = QueryTask
-            .execute(r#"{"limit":5"#.to_string(), STATE)
-            .await
-            .unwrap_err();
-
-        assert!(!error.message.is_empty());
     }
 
     /// `limit` 范围校验失败，测试下边界之外的值
@@ -128,10 +125,11 @@ mod tests {
     #[tokio::test]
     async fn should_reject_limit_below_minimum() {
         let error = QueryTask
-            .execute(r#"{"limit":0}"#.to_string(), STATE)
+            .execute(serde_json::json!({"limit":0}), STATE)
             .await
             .unwrap_err();
 
+        assert_eq!(error.kind, ToolErrorKind::ArgumentValidation);
         assert_eq!(
             error.message,
             "limit 字段的值超出范围，期望：[1, 100]，实际：0"
@@ -144,10 +142,11 @@ mod tests {
     #[tokio::test]
     async fn should_reject_limit_above_maximum() {
         let error = QueryTask
-            .execute(r#"{"limit":101}"#.to_string(), STATE)
+            .execute(serde_json::json!({"limit":101}), STATE)
             .await
             .unwrap_err();
 
+        assert_eq!(error.kind, ToolErrorKind::ArgumentValidation);
         assert_eq!(
             error.message,
             "limit 字段的值超出范围，期望：[1, 100]，实际：101"
