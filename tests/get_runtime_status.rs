@@ -1,10 +1,23 @@
 use llm_driven_runtime::{
     runtime::RuntimeOutput,
-    tool::{GetRuntimeStatus, Tool},
+    tool::{Tool, registry::ToolRegistry},
     user_input::UserInput,
 };
 
+use crate::common::tool::GetRuntimeStatus;
+
 mod common;
+
+/// 验证 `get_runtime_status` 工具的注册
+#[test]
+fn should_register_get_runtime_status_tool() {
+    let mut registry = ToolRegistry::new();
+    registry.register(GetRuntimeStatus);
+
+    let tool = registry.get(GetRuntimeStatus.name());
+
+    assert!(tool.is_some());
+}
 
 /// 验证 `Runtime` 能成功调用 `GetRuntimeStatus` 工具
 #[tokio::test]

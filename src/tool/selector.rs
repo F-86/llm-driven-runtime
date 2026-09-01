@@ -1,10 +1,5 @@
 use crate::{state::State, tool::registry::ToolRegistry, user_input::UserInput};
 
-/// 固定工具选择器的测试实现。
-pub mod fixed;
-
-pub use fixed::FixedToolSelector;
-
 /// 工具选择器
 #[async_trait::async_trait]
 pub trait ToolSelector {

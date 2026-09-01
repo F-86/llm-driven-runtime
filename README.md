@@ -72,10 +72,10 @@ flowchart LR
 
 - `Runtime` 的单工具选择、参数生成和执行链路。
 - `Tool` trait（特征）和工具注册表。
-- 基于 `schemars` 生成工具参数 Schema。
-- 固定工具选择器和固定参数生成器，便于测试。
-- `QueryTask` 和 `GetRuntimeStatus` 示例工具。
-- 工具参数反序列化、未知字段、范围和业务条件测试。
+- 测试工具使用 `schemars` 生成参数 Schema。
+- 集成测试使用固定工具选择器和固定参数生成器验证 Runtime 链路。
+- 集成测试通过 `tests/common/tool/` 提供 `QueryTask` 和 `GetRuntimeStatus` 测试工具。
+- 测试覆盖工具参数 Schema、反序列化、未知字段、范围和业务条件。
 
 目标架构中尚未实现的主要能力包括：
 
@@ -108,7 +108,9 @@ flowchart LR
 项目使用 Rust 2024 edition。安装 Rust stable 工具链后，在仓库根目录运行：
 
 ```bash
+cargo fmt --all -- --check
 cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 当前 `main` 仍是占位入口，项目行为主要通过集成测试和单元测试验证。
@@ -118,10 +120,10 @@ cargo test --workspace
 | 路径 | 用途 |
 | --- | --- |
 | `src/runtime.rs` | 当前 Runtime 原型。 |
-| `src/state.rs` | 当前最小 State 定义。 |
-| `src/tool/` | Tool trait、注册表、选择器、参数生成器和示例工具。 |
-| `tool-macros/` | 工具 Schema 过程宏。 |
-| `tests/` | Runtime 和工具的集成测试。 |
+| `src/state.rs` | State、StateDelta 和状态合并相关类型。 |
+| `src/tool/` | Tool 契约、工具注册表、选择器和参数生成器接口。 |
+| `tool-macros/` | 工具参数 Schema 过程宏，当前由测试工具使用。 |
+| `tests/` | Runtime、工具契约和测试工具的集成测试。 |
 | `docs/architecture/` | 目标架构与实施计划。 |
 
 ## 后续开发

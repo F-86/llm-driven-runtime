@@ -8,7 +8,7 @@ pub mod scheduling;
 pub mod state;
 /// `Task`、`Phase`、`ExecutionPlan` 和 `ToolCall` 领域类型。
 pub mod task;
-/// 工具契约、注册表和辅助实现。
+/// 工具契约、注册表、选择器和参数生成器接口。
 pub mod tool;
 /// 当前原型接收的用户输入类型。
 pub mod user_input;

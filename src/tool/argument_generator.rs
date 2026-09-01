@@ -1,13 +1,5 @@
 use crate::{state::State, tool::Tool, user_input::UserInput};
 
-/// 返回空对象参数的测试实现。
-pub mod empty;
-/// 返回固定参数的测试实现。
-pub mod fixed;
-
-pub use empty::EmptyArgumentGenerator;
-pub use fixed::FixedArgumentGenerator;
-
 /// 参数生成器
 #[async_trait::async_trait]
 pub trait ArgumentGenerator {
