@@ -1,5 +1,7 @@
 //! LLM 驱动的任务运行时领域模型和单工具原型。
 
+/// Phase 状态机运行时。
+pub mod phase_runtime;
 /// 当前单工具运行时原型。
 pub mod runtime;
 /// 任务调度相关类型。
