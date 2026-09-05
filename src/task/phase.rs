@@ -141,9 +141,11 @@ mod tests {
         (NeedSummary, NeedDecision),
     ];
 
-    /// 测试允许的转移和不允许的转移
+    /// 验证状态机只允许预先定义的 Phase 转移。
+    ///
+    /// 方法：枚举所有 Phase 组合，并逐项与允许转移表比较。
     #[test]
-    fn should_allow_valid_and_reject_invalid_transitions() {
+    fn should_allow_only_defined_transitions() {
         for from in ALL_PHASE {
             for to in ALL_PHASE {
                 assert_eq!(

@@ -4,14 +4,22 @@ use llm_driven_runtime::{
     user_input::UserInput,
 };
 
-/// 固定的工具选择器，用于测试
-pub struct FixedToolSelector<'a> {
-    /// 始终返回的工具名称
-    pub tool_name: &'a str,
+/// 始终选择固定工具的 Runtime 测试选择器。
+#[derive(Debug, Clone)]
+pub(crate) struct FixedToolSelector {
+    tool_name: String,
+}
+
+impl FixedToolSelector {
+    pub(crate) fn new(tool_name: impl Into<String>) -> Self {
+        Self {
+            tool_name: tool_name.into(),
+        }
+    }
 }
 
 #[async_trait::async_trait]
-impl ToolSelector for FixedToolSelector<'_> {
+impl ToolSelector for FixedToolSelector {
     async fn select(
         &self,
         _input: &UserInput,
@@ -19,7 +27,7 @@ impl ToolSelector for FixedToolSelector<'_> {
         _tools: &ToolRegistry,
     ) -> Result<ToolSelection, SelectionError> {
         Ok(ToolSelection {
-            tool_name: self.tool_name.to_string(),
+            tool_name: self.tool_name.clone(),
         })
     }
 }

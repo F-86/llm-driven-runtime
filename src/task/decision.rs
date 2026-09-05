@@ -24,8 +24,8 @@ pub enum Decision {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ToolCallPlan {
     /// 执行计划内逻辑调用的稳定标识，同一执行计划中必须唯一。
-    /// 
-    /// 便于 LLM/用户 以“主搜索”“备用搜索”这类语义名称引用某次调用
+    ///
+    /// 便于 LLM/用户 以“主搜索”“备用搜索”这类语义名称引用某次调用。
     pub call_key: String,
     /// 工具名称
     pub tool_name: String,

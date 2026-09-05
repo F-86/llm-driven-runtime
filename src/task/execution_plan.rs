@@ -118,9 +118,11 @@ mod tests {
         ToolCallId, ToolCallPlan,
     };
 
-    /// 只有终态的执行计划状态才应被识别为已结束
+    /// 验证只有终态执行计划状态会被识别为结束。
+    ///
+    /// 方法：分别遍历终态和非终态集合，检查 `is_terminal` 的结果。
     #[test]
-    fn terminal_status_should_be_recognized() {
+    fn should_recognize_only_terminal_statuses() {
         let terminal_statuses = [
             ExecutionPlanStatus::Succeeded,
             ExecutionPlanStatus::Failed,
@@ -142,6 +144,7 @@ mod tests {
         }
     }
 
+    /// 构建 `ToolCall` 对象。
     fn build_tool_call(call_id: &str, tool_name: &str) -> ToolCall {
         ToolCall::new(
             ToolCallId::new(call_id),
@@ -154,17 +157,28 @@ mod tests {
         )
     }
 
-    /// 新建执行计划时，应正确初始化基本字段
-    #[test]
-    fn try_new_should_initialize_execution_plan() {
-        let plan = ExecutionPlan::try_new(
+    /// 构建 `ExecutionPlan` 对象。
+    fn build_execution_plan(
+        ordinal: u32,
+        state_version: u64,
+        tool_calls: Vec<ToolCall>,
+    ) -> Result<ExecutionPlan, ExecutionPlanError> {
+        ExecutionPlan::try_new(
             ExecutionPlanId::new("plan-1"),
             TaskId::new("task-1"),
-            0,
-            3,
-            vec![build_tool_call("call-1", "tool-a")],
+            ordinal,
+            state_version,
+            tool_calls,
         )
-        .expect("非空且 call_key 唯一的计划应该可以创建");
+    }
+
+    /// 验证新建执行计划会初始化基本字段。
+    ///
+    /// 方法：用一个有效工具调用创建计划，并检查身份、版本、状态和调用数量。
+    #[test]
+    fn should_initialize_execution_plan() {
+        let plan = build_execution_plan(0, 3, vec![build_tool_call("call-1", "tool-a")])
+            .expect("非空且 call_key 唯一的计划应该可以创建");
 
         assert_eq!(plan.id, ExecutionPlanId::new("plan-1"));
         assert_eq!(plan.task_id, TaskId::new("task-1"));
@@ -173,102 +187,73 @@ mod tests {
         assert_eq!(plan.tool_calls.len(), 1);
     }
 
-    /// 空的执行计划不符合领域不变量。
+    /// 验证空工具调用集合不满足执行计划领域不变量。
+    ///
+    /// 方法：以空集合创建计划，并比较返回的领域错误。
     #[test]
-    fn try_new_should_reject_empty_tool_calls() {
+    fn should_reject_empty_tool_calls() {
         assert_eq!(
-            ExecutionPlan::try_new(
-                ExecutionPlanId::new("plan-1"),
-                TaskId::new("task-1"),
-                0,
-                0,
-                Vec::new(),
-            ),
+            build_execution_plan(0, 0, Vec::new()),
             Err(ExecutionPlanError::EmptyToolCalls)
         );
     }
 
-    /// 执行计划的顺序编号应支持从 0 开始。
+    /// 验证执行计划会保留从 0 开始及非零的顺序编号。
+    ///
+    /// 方法：表驱动地以两个编号创建有效计划，并逐项比较保存的编号。
     #[test]
-    fn try_new_should_allow_zero_ordinal() {
-        let plan = ExecutionPlan::try_new(
-            ExecutionPlanId::new("plan-1"),
-            TaskId::new("task-1"),
-            0,
-            0,
-            vec![build_tool_call("call-1", "tool-a")],
-        )
-        .expect("非空且 call_key 唯一的计划应该可以创建");
+    fn should_preserve_ordinal() {
+        for ordinal in [0, 2] {
+            let plan = build_execution_plan(ordinal, 0, vec![build_tool_call("call-1", "tool-a")])
+                .expect("非空且 call_key 唯一的计划应该可以创建");
 
-        assert_eq!(plan.ordinal, 0);
+            assert_eq!(plan.ordinal, ordinal);
+        }
     }
 
-    /// 执行计划应保留创建方传入的顺序编号
+    /// 验证执行计划会保留工具调用顺序。
+    ///
+    /// 方法：按两个不同工具调用创建计划，并比较保存后的工具名称序列。
     #[test]
-    fn try_new_should_preserve_ordinal() {
-        let plan = ExecutionPlan::try_new(
-            ExecutionPlanId::new("plan-1"),
-            TaskId::new("task-1"),
-            2,
-            0,
-            vec![build_tool_call("call-1", "tool-a")],
-        )
-        .expect("非空且 call_key 唯一的计划应该可以创建");
-
-        assert_eq!(plan.ordinal, 2);
-    }
-
-    /// 执行计划应保留工具调用的顺序
-    #[test]
-    fn try_new_should_preserve_tool_call_order() {
+    fn should_preserve_tool_call_order() {
         let tool_calls = vec![
             build_tool_call("call-1", "tool-a"),
             build_tool_call("call-2", "tool-b"),
         ];
 
-        let plan = ExecutionPlan::try_new(
-            ExecutionPlanId::new("plan-1"),
-            TaskId::new("task-1"),
-            0,
-            0,
-            tool_calls,
-        )
-        .expect("非空且 call_key 唯一的计划应该可以创建");
+        let plan =
+            build_execution_plan(0, 0, tool_calls).expect("非空且 call_key 唯一的计划应该可以创建");
 
-        assert_eq!(plan.tool_calls[0].plan.tool_name, "tool-a");
-        assert_eq!(plan.tool_calls[1].plan.tool_name, "tool-b");
+        let tool_names: Vec<_> = plan
+            .tool_calls
+            .iter()
+            .map(|tool_call| tool_call.plan.tool_name.as_str())
+            .collect();
+        assert_eq!(tool_names, vec!["tool-a", "tool-b"]);
     }
 
-    /// 同一执行计划中的 `call_key` 必须唯一，供后续持久化和结果归并稳定引用。
+    /// 验证同一执行计划中的 `call_key` 必须唯一。
+    ///
+    /// 方法：构造两个相同调用键的工具调用，并比较创建时返回的领域错误。
     #[test]
-    fn try_new_should_reject_duplicate_call_keys() {
+    fn should_reject_duplicate_call_keys() {
         let first = build_tool_call("call-1", "tool-a");
         let mut second = build_tool_call("call-2", "tool-b");
         second.plan.call_key = first.plan.call_key.clone();
 
         assert_eq!(
-            ExecutionPlan::try_new(
-                ExecutionPlanId::new("plan-1"),
-                TaskId::new("task-1"),
-                0,
-                0,
-                vec![first, second],
-            ),
+            build_execution_plan(0, 0, vec![first, second]),
             Err(ExecutionPlanError::DuplicateCallKey("call-1".to_string()))
         );
     }
 
-    /// 执行计划应支持 JSON 序列化和反序列化
+    /// 验证执行计划可以经 JSON 往返而不丢失信息。
+    ///
+    /// 方法：序列化有效计划后反序列化，并比较完整值。
     #[test]
-    fn execution_plan_should_round_trip_through_json() {
-        let plan = ExecutionPlan::try_new(
-            ExecutionPlanId::new("plan-1"),
-            TaskId::new("task-1"),
-            1,
-            5,
-            vec![build_tool_call("call-1", "tool-a")],
-        )
-        .expect("非空且 call_key 唯一的计划应该可以创建");
+    fn should_round_trip_through_json() {
+        let plan = build_execution_plan(1, 5, vec![build_tool_call("call-1", "tool-a")])
+            .expect("非空且 call_key 唯一的计划应该可以创建");
 
         let json = serde_json::to_string(&plan).expect("执行计划应该可以序列化");
         let restored: ExecutionPlan =

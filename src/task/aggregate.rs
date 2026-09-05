@@ -83,10 +83,17 @@ mod tests {
         task::{Task, TaskId, TaskPhase},
     };
 
-    /// Phase 转移后，应同步更新版本号和调度状态
+    /// 创建一个新的 `Task`。
+    fn new_task() -> Task {
+        Task::new(TaskId::new("task-1"), "测试任务", State::default())
+    }
+
+    /// 验证 Phase 转移会同步更新 Phase 版本和调度状态。
+    ///
+    /// 方法：将新建 Task 转移到等待输入阶段，并检查三个受影响字段。
     #[test]
-    fn transition_to_should_update_phase_version_and_scheduling_status() {
-        let mut task = Task::new(TaskId::new("task-1"), "测试任务", State::default());
+    fn should_update_phase_version_and_scheduling_status_when_transitioning() {
+        let mut task = new_task();
 
         task.transition_to(TaskPhase::WaitingInput)
             .expect("Phase 转移应该成功");
@@ -96,10 +103,12 @@ mod tests {
         assert_eq!(task.scheduling_status, SchedulingStatus::Suspended);
     }
 
-    /// 替换 State 时，只应增加 State 版本号
+    /// 验证替换 State 只增加 State 版本，不改变 Phase 版本。
+    ///
+    /// 方法：替换新建 Task 的 State，并比较两个版本及保存的数据。
     #[test]
-    fn replace_state_should_increment_state_version_only() {
-        let mut task = Task::new(TaskId::new("task-1"), "测试任务", State::default());
+    fn should_increment_only_state_version_when_replacing_state() {
+        let mut task = new_task();
 
         let old_phase_version = task.phase_version;
 

@@ -7,10 +7,16 @@ use llm_driven_runtime::{
     user_input::UserInput,
 };
 
-/// 固定参数生成器，用于测试
-pub struct FixedArgumentGenerator {
-    /// 始终返回的工具参数
-    pub arg: serde_json::Value,
+/// 始终返回固定参数的 Runtime 测试生成器。
+#[derive(Debug, Clone)]
+pub(crate) struct FixedArgumentGenerator {
+    arg: serde_json::Value,
+}
+
+impl FixedArgumentGenerator {
+    pub(crate) fn new(arg: serde_json::Value) -> Self {
+        Self { arg }
+    }
 }
 
 #[async_trait::async_trait]

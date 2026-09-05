@@ -237,56 +237,105 @@ mod tests {
         scheduling::{RuntimeJob, SchedulingStatus},
         state::State,
         task::{
-            ExecutionPlan, ExecutionPlanId, ExecutionPlanStatus, Task, TaskId, TaskPhase, ToolCall,
-            ToolCallId, ToolCallPlan,
+            ExecutionPlan, ExecutionPlanId, InvalidPhaseTransition, Task, TaskId, TaskPhase,
+            ToolCall, ToolCallId, ToolCallPlan,
         },
     };
 
     use super::{CommitOutcome, InMemoryRepository, RepositoryError};
 
-    /// `create_task` 应该成功，并且调用 `get_task` 得到的 `Task` 应该和创建时传入的一样。
-    #[test]
-    fn should_create_and_read_task() {
-        let repository = InMemoryRepository::new();
-        let task = Task::new(TaskId::new("task-1"), "测试任务", State::default());
+    /// 创建一个 `Task`。
+    fn new_task(task_id: &str) -> Task {
+        Task::new(TaskId::new(task_id), "测试任务", State::default())
+    }
 
+    /// 强制把 `Task` 保存到 `InMemoryRepository` 中。
+    fn create_task(repository: &InMemoryRepository, task: &Task) {
         repository
             .create_task(task.clone())
             .expect("创建 Task 应该成功");
-
-        assert_eq!(
-            repository.get_task(&task.id).expect("读取 Task 应该成功"),
-            Some(task)
-        );
     }
 
-    /// `create_task` 应该拒绝重复 `Task`。
+    /// 强制获取 `InMemoryRepository` 中保存的 `Task`。
+    fn get_saved_task(repository: &InMemoryRepository, task_id: &TaskId) -> Task {
+        repository
+            .get_task(task_id)
+            .expect("读取 Task 应该成功")
+            .expect("Task 应该存在")
+    }
+
+    /// 强制获取 `InMemoryRepository` 中保存的 `ExecutionPlan`。
+    fn get_saved_plan(
+        repository: &InMemoryRepository,
+        plan_id: &ExecutionPlanId,
+    ) -> Option<ExecutionPlan> {
+        repository
+            .get_execution_plan(plan_id)
+            .expect("读取执行计划应该成功")
+    }
+
+    /// 断言任务和执行计划没有改变。
+    ///
+    /// 任务仍是之前的任务，执行计划应该为空。
+    fn assert_task_and_plan_unchanged(
+        repository: &InMemoryRepository,
+        original_task: &Task,
+        plan_id: &ExecutionPlanId,
+    ) {
+        assert_eq!(
+            get_saved_task(repository, &original_task.id),
+            original_task.clone()
+        );
+        assert_eq!(get_saved_plan(repository, plan_id), None);
+    }
+
+    /// 验证创建后的 Task 可以按 id 完整读取。
+    ///
+    /// 方法：创建一个新 Task，再按其 id 读取并比较完整值。
+    #[test]
+    fn should_create_and_read_task() {
+        let repository = InMemoryRepository::new();
+        let task = new_task("task-1");
+
+        create_task(&repository, &task);
+
+        assert_eq!(get_saved_task(&repository, &task.id), task);
+    }
+
+    /// 验证 Repository 会拒绝 id 重复的 Task。
+    ///
+    /// 方法：连续创建两个相同 id 的 Task，并比较第二次调用的错误。
     #[test]
     fn should_reject_duplicate_task() {
         let repository = InMemoryRepository::new();
-        let task = Task::new(TaskId::new("task-1"), "测试任务", State::default());
+        let task = new_task("task-1");
 
-        repository.create_task(task.clone()).unwrap();
+        create_task(&repository, &task);
 
         assert_eq!(
             repository.create_task(task.clone()),
-            Err(RepositoryError::TaskAlreadyExists(task.id))
+            Err(RepositoryError::TaskAlreadyExists(task.id.clone()))
         );
     }
 
-    /// 持锁线程发生 panic 后，Repository 应该返回锁中毒错误。
+    /// 验证锁中毒后 Repository 返回明确错误。
+    ///
+    /// 方法：在线程持锁期间故意 panic，再通过公开读取接口检查错误。
     #[test]
     fn should_return_error_when_lock_is_poisoned() {
         let repository = InMemoryRepository::new();
         let repository_for_panic = repository.clone();
 
         let result = std::thread::spawn(move || {
-            let _guard = repository_for_panic.inner.lock().unwrap();
+            let _guard = repository_for_panic
+                .inner
+                .lock()
+                .expect("测试线程应该获得 Repository 锁");
 
             panic!("故意让 Repository 锁中毒");
         })
         .join();
-        assert!(result.is_err());
+        assert!(result.is_err(), "测试线程应该因故意 panic 结束");
 
         assert_eq!(
             repository.get_task(&TaskId::new("task-1")),
@@ -294,221 +343,20 @@ mod tests {
         );
     }
 
-    /// 读取不存在的执行计划时应该返回 `None`。
+    /// 验证读取不存在的执行计划会返回 `None`。
+    ///
+    /// 方法：在空 Repository 中按未知 id 读取执行计划。
     #[test]
     fn should_return_none_when_execution_plan_does_not_exist() {
         let repository = InMemoryRepository::new();
 
         assert_eq!(
-            repository
-                .get_execution_plan(&ExecutionPlanId::new("plan-1"))
-                .expect("读取执行计划应该成功"),
+            get_saved_plan(&repository, &ExecutionPlanId::new("plan-1")),
             None
         );
     }
 
-    /// 构建执行计划。
-    fn build_plan(task_id: &TaskId) -> ExecutionPlan {
-        let plan_id = ExecutionPlanId::new("plan-1");
-
-        let tool_call = ToolCall::new(
-            ToolCallId::new("call-1"),
-            plan_id.clone(),
-            ToolCallPlan {
-                call_key: "call-1".to_string(),
-                tool_name: "test-tool".to_string(),
-                purpose: "测试调用".to_string(),
-            },
-        );
-
-        ExecutionPlan::try_new(plan_id, task_id.clone(), 0, 0, vec![tool_call])
-            .expect("测试计划应满足 ExecutionPlan 的条件")
-    }
-
-    /// 成功提交时应该同时保存执行计划并推进 Task。
-    #[test]
-    fn should_commit_plan_and_advance_task_atomically() {
-        let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("task-1");
-
-        repository
-            .create_task(Task::new(task_id.clone(), "测试任务", State::default()))
-            .unwrap();
-
-        let job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 0);
-        let plan = build_plan(&task_id);
-        let plan_id = plan.id.clone();
-
-        assert_eq!(
-            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments),
-            Ok(CommitOutcome::Committed)
-        );
-
-        let task = repository.get_task(&task_id).unwrap().unwrap();
-        assert_eq!(task.phase, TaskPhase::NeedArguments);
-        assert_eq!(task.phase_version, 1);
-        assert_eq!(task.state_version, 0);
-        assert_eq!(task.scheduling_status, SchedulingStatus::Ready);
-
-        let plan = repository.get_execution_plan(&plan_id).unwrap().unwrap();
-        assert_eq!(plan.status(), ExecutionPlanStatus::Planned);
-        assert_eq!(plan.task_id, task_id);
-        assert_eq!(plan.state_version, 0);
-        assert_eq!(plan.tool_calls.len(), 1);
-    }
-
-    /// 非法 Phase 迁移时，不应该保存执行计划或修改 Task。
-    #[test]
-    fn should_not_partially_commit_when_transition_is_invalid() {
-        let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("task-1");
-
-        repository
-            .create_task(Task::new(task_id.clone(), "测试任务", State::default()))
-            .unwrap();
-
-        let job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 0);
-        let plan = build_plan(&task_id);
-        let plan_id = plan.id.clone();
-
-        let result = repository.commit_plan_and_transition(&job, plan, TaskPhase::ReadyToExecute);
-
-        assert!(matches!(
-            result,
-            Err(RepositoryError::InvalidPhaseTransition(_))
-        ));
-
-        let task = repository.get_task(&task_id).unwrap().unwrap();
-        assert_eq!(task.phase, TaskPhase::NeedDecision);
-        assert_eq!(task.phase_version, 0);
-
-        assert_eq!(repository.get_execution_plan(&plan_id).unwrap(), None);
-    }
-
-    /// Job 版本过期时，不应该发生任何写入。
-    #[test]
-    fn should_return_stale_when_job_version_does_not_match() {
-        let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("task-1");
-
-        repository
-            .create_task(Task::new(task_id.clone(), "测试任务", State::default()))
-            .unwrap();
-
-        let stale_job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 1);
-        let plan = build_plan(&task_id);
-        let plan_id = plan.id.clone();
-
-        assert_eq!(
-            repository.commit_plan_and_transition(&stale_job, plan, TaskPhase::NeedArguments),
-            Ok(CommitOutcome::Stale)
-        );
-
-        let task = repository.get_task(&task_id).unwrap().unwrap();
-        assert_eq!(task.phase, TaskPhase::NeedDecision);
-        assert_eq!(task.phase_version, 0);
-        assert_eq!(repository.get_execution_plan(&plan_id).unwrap(), None);
-    }
-
-    /// 同一个 Job 第二次提交时应该返回 `Stale`。
-    #[test]
-    fn should_not_commit_same_job_twice() {
-        let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("task-1");
-
-        repository
-            .create_task(Task::new(task_id.clone(), "测试任务", State::default()))
-            .unwrap();
-
-        let job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 0);
-        let plan = build_plan(&task_id);
-        let plan_id = plan.id.clone();
-
-        assert_eq!(
-            repository.commit_plan_and_transition(&job, plan.clone(), TaskPhase::NeedArguments,),
-            Ok(CommitOutcome::Committed)
-        );
-
-        let saved_plan = repository.get_execution_plan(&plan_id).unwrap();
-
-        assert_eq!(
-            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments,),
-            Ok(CommitOutcome::Stale)
-        );
-
-        assert_eq!(repository.get_execution_plan(&plan_id).unwrap(), saved_plan);
-    }
-
-    /// Task 不存在时不应该保存执行计划。
-    #[test]
-    fn should_return_task_not_found() {
-        let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("missing-task");
-        let job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 0);
-        let plan = build_plan(&task_id);
-
-        assert_eq!(
-            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments),
-            Err(RepositoryError::TaskNotFound(task_id))
-        );
-    }
-
-    /// 执行计划属于其他 Task 时，不应该发生任何写入。
-    #[test]
-    fn should_reject_plan_for_another_task() {
-        let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("task-1");
-        let another_task_id = TaskId::new("task-2");
-
-        repository
-            .create_task(Task::new(task_id.clone(), "测试任务", State::default()))
-            .unwrap();
-
-        let job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 0);
-        let plan = build_plan(&another_task_id);
-        let plan_id = plan.id.clone();
-
-        assert_eq!(
-            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments),
-            Err(RepositoryError::PlanTaskMismatch {
-                expected_task_id: task_id.clone(),
-                actual_task_id: another_task_id,
-                plan_id: plan_id.clone(),
-            })
-        );
-
-        let task = repository.get_task(&task_id).unwrap().unwrap();
-        assert_eq!(task.phase, TaskPhase::NeedDecision);
-        assert_eq!(task.phase_version, 0);
-        assert_eq!(repository.get_execution_plan(&plan_id).unwrap(), None);
-    }
-
-    /// Job 期待的 Phase 不匹配时，不应该发生任何写入。
-    #[test]
-    fn should_return_stale_when_job_phase_does_not_match() {
-        let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("task-1");
-
-        repository
-            .create_task(Task::new(task_id.clone(), "测试任务", State::default()))
-            .unwrap();
-
-        let stale_job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedArguments, 0);
-        let plan = build_plan(&task_id);
-        let plan_id = plan.id.clone();
-
-        assert_eq!(
-            repository.commit_plan_and_transition(&stale_job, plan, TaskPhase::NeedArguments),
-            Ok(CommitOutcome::Stale)
-        );
-
-        let task = repository.get_task(&task_id).unwrap().unwrap();
-        assert_eq!(task.phase, TaskPhase::NeedDecision);
-        assert_eq!(task.phase_version, 0);
-        assert_eq!(repository.get_execution_plan(&plan_id).unwrap(), None);
-    }
-
-    /// 构建执行计划，同时附带执行计划的 id。
+    /// 强制创建一个 `ExecutionPlan`，附带计划的 id。
     fn build_plan_with_id(task_id: &TaskId, plan_id_text: &str) -> ExecutionPlan {
         let plan_id = ExecutionPlanId::new(plan_id_text);
 
@@ -526,21 +374,190 @@ mod tests {
             .expect("测试计划应满足 ExecutionPlan 的条件")
     }
 
-    /// 两个线程提交相同 Job 时最多只能有一个成功。
+    /// 强制创建一个 `ExecutionPlan`，计划 id 默认为 "plan-1"。
+    fn build_plan(task_id: &TaskId) -> ExecutionPlan {
+        build_plan_with_id(task_id, "plan-1")
+    }
+
+    /// 验证成功提交会同时保存完整计划并推进 Task。
+    ///
+    /// 方法：提交匹配的 Job 和有效计划，再读取两个持久化对象进行比较。
+    #[test]
+    fn should_commit_plan_and_advance_task_atomically() {
+        let repository = InMemoryRepository::new();
+        let task = new_task("task-1");
+        create_task(&repository, &task);
+
+        let job = RuntimeJob::new(task.id.clone(), TaskPhase::NeedDecision, 0);
+        let plan = build_plan(&task.id);
+        let plan_id = plan.id.clone();
+        let expected_plan = plan.clone();
+
+        assert_eq!(
+            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments),
+            Ok(CommitOutcome::Committed)
+        );
+
+        let saved_task = get_saved_task(&repository, &task.id);
+        assert_eq!(
+            (
+                saved_task.phase,
+                saved_task.phase_version,
+                saved_task.state_version,
+                saved_task.scheduling_status,
+            ),
+            (TaskPhase::NeedArguments, 1, 0, SchedulingStatus::Ready)
+        );
+        assert_eq!(get_saved_plan(&repository, &plan_id), Some(expected_plan));
+    }
+
+    /// 验证非法 Phase 迁移不会产生部分提交。
+    ///
+    /// 方法：提交不能从当前 Phase 到达的目标，并比较错误和持久化前后快照。
+    #[test]
+    fn should_not_partially_commit_when_transition_is_invalid() {
+        let repository = InMemoryRepository::new();
+        let task = new_task("task-1");
+        create_task(&repository, &task);
+
+        let job = RuntimeJob::new(task.id.clone(), TaskPhase::NeedDecision, 0);
+        let plan = build_plan(&task.id);
+        let plan_id = plan.id.clone();
+
+        let result = repository.commit_plan_and_transition(&job, plan, TaskPhase::ReadyToExecute);
+
+        assert!(matches!(
+            result,
+            Err(RepositoryError::InvalidPhaseTransition(
+                InvalidPhaseTransition {
+                    from: TaskPhase::NeedDecision,
+                    to: TaskPhase::ReadyToExecute,
+                }
+            ))
+        ));
+
+        assert_task_and_plan_unchanged(&repository, &task, &plan_id);
+    }
+
+    /// 验证 Phase 或版本不匹配的 Job 都会返回 `Stale` 且不写入。
+    ///
+    /// 方法：表驱动地构造两类不匹配 Job，并比较结果及持久化前后快照。
+    #[test]
+    fn should_return_stale_for_mismatched_job_without_writing() {
+        for (case_name, expected_phase, expected_version) in [
+            ("版本不匹配", TaskPhase::NeedDecision, 1),
+            ("Phase 不匹配", TaskPhase::NeedArguments, 0),
+        ] {
+            let repository = InMemoryRepository::new();
+            let task = new_task("task-1");
+            create_task(&repository, &task);
+
+            let stale_job = RuntimeJob::new(task.id.clone(), expected_phase, expected_version);
+            let plan = build_plan(&task.id);
+            let plan_id = plan.id.clone();
+
+            assert_eq!(
+                repository.commit_plan_and_transition(&stale_job, plan, TaskPhase::NeedArguments),
+                Ok(CommitOutcome::Stale),
+                "{case_name} 应返回 Stale"
+            );
+            assert_task_and_plan_unchanged(&repository, &task, &plan_id);
+        }
+    }
+
+    /// 验证重复提交同一 Job 不会覆盖先前保存的输出。
+    ///
+    /// 方法：先成功提交，再重放相同 Job，并比较两次提交间的 Task 与计划快照。
+    #[test]
+    fn should_not_commit_same_job_twice() {
+        let repository = InMemoryRepository::new();
+        let task = new_task("task-1");
+        create_task(&repository, &task);
+
+        let job = RuntimeJob::new(task.id.clone(), TaskPhase::NeedDecision, 0);
+        let plan = build_plan(&task.id);
+        let plan_id = plan.id.clone();
+
+        assert_eq!(
+            repository.commit_plan_and_transition(&job, plan.clone(), TaskPhase::NeedArguments,),
+            Ok(CommitOutcome::Committed)
+        );
+
+        let task_after_first_commit = get_saved_task(&repository, &task.id);
+        let plan_after_first_commit = get_saved_plan(&repository, &plan_id);
+
+        assert_eq!(
+            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments,),
+            Ok(CommitOutcome::Stale)
+        );
+
+        assert_eq!(
+            get_saved_task(&repository, &task.id),
+            task_after_first_commit
+        );
+        assert_eq!(
+            get_saved_plan(&repository, &plan_id),
+            plan_after_first_commit
+        );
+    }
+
+    /// 验证不存在的 Task 会导致提交失败且不保存计划。
+    ///
+    /// 方法：不创建目标 Task 就提交计划，并比较错误和计划读取结果。
+    #[test]
+    fn should_return_task_not_found() {
+        let repository = InMemoryRepository::new();
+        let task_id = TaskId::new("missing-task");
+        let job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 0);
+        let plan = build_plan(&task_id);
+        let plan_id = plan.id.clone();
+
+        assert_eq!(
+            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments),
+            Err(RepositoryError::TaskNotFound(task_id))
+        );
+        assert_eq!(get_saved_plan(&repository, &plan_id), None);
+    }
+
+    /// 验证计划属于其他 Task 时会被拒绝且不写入。
+    ///
+    /// 方法：为另一个 Task 构造计划，提交到当前 Task 的 Job，并比较错误和快照。
+    #[test]
+    fn should_reject_plan_for_another_task() {
+        let repository = InMemoryRepository::new();
+        let task = new_task("task-1");
+        let another_task_id = TaskId::new("task-2");
+        create_task(&repository, &task);
+
+        let job = RuntimeJob::new(task.id.clone(), TaskPhase::NeedDecision, 0);
+        let plan = build_plan(&another_task_id);
+        let plan_id = plan.id.clone();
+
+        assert_eq!(
+            repository.commit_plan_and_transition(&job, plan, TaskPhase::NeedArguments),
+            Err(RepositoryError::PlanTaskMismatch {
+                expected_task_id: task.id.clone(),
+                actual_task_id: another_task_id,
+                plan_id: plan_id.clone(),
+            })
+        );
+        assert_task_and_plan_unchanged(&repository, &task, &plan_id);
+    }
+
+    /// 验证两个线程竞争提交同一 Job 时最多只有一个提交成功。
+    ///
+    /// 方法：用 Barrier 同步两个提交线程，并检查结果组合和保存计划数量。
     #[test]
     fn should_allow_only_one_concurrent_commit() {
         use std::sync::{Arc, Barrier};
 
         let repository = InMemoryRepository::new();
-        let task_id = TaskId::new("task-1");
+        let task = new_task("task-1");
+        create_task(&repository, &task);
 
-        repository
-            .create_task(Task::new(task_id.clone(), "测试任务", State::default()))
-            .unwrap();
-
-        let job = RuntimeJob::new(task_id.clone(), TaskPhase::NeedDecision, 0);
-        let first_plan = build_plan_with_id(&task_id, "plan-a");
-        let second_plan = build_plan_with_id(&task_id, "plan-b");
+        let job = RuntimeJob::new(task.id.clone(), TaskPhase::NeedDecision, 0);
+        let first_plan = build_plan_with_id(&task.id, "plan-a");
+        let second_plan = build_plan_with_id(&task.id, "plan-b");
         let first_plan_id = first_plan.id.clone();
         let second_plan_id = second_plan.id.clone();
 
@@ -572,29 +589,22 @@ mod tests {
 
         barrier.wait();
 
-        let first_result = first_handle.join().unwrap();
-        let second_result = second_handle.join().unwrap();
+        let first_result = first_handle.join().expect("第一个提交线程不应 panic");
+        let second_result = second_handle.join().expect("第二个提交线程不应 panic");
 
         assert!(
-            (first_result == Ok(CommitOutcome::Committed)
-                && second_result == Ok(CommitOutcome::Stale))
-                || (first_result == Ok(CommitOutcome::Stale)
-                    && second_result == Ok(CommitOutcome::Committed))
+            matches!(
+                (first_result, second_result),
+                (Ok(CommitOutcome::Committed), Ok(CommitOutcome::Stale))
+                    | (Ok(CommitOutcome::Stale), Ok(CommitOutcome::Committed))
+            ),
+            "一个提交应成功，另一个应因 Job 过期返回 Stale"
         );
 
-        let saved_plan_count = [
-            repository
-                .get_execution_plan(&first_plan_id)
-                .unwrap()
-                .is_some(),
-            repository
-                .get_execution_plan(&second_plan_id)
-                .unwrap()
-                .is_some(),
-        ]
-        .into_iter()
-        .filter(|saved| *saved)
-        .count();
+        let saved_plan_count = [first_plan_id, second_plan_id]
+            .into_iter()
+            .filter(|plan_id| get_saved_plan(&repository, plan_id).is_some())
+            .count();
 
         assert_eq!(saved_plan_count, 1);
     }

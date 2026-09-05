@@ -211,14 +211,47 @@ mod tests {
     use crate::{
         state::StateDelta,
         task::{
-            ExecutionPlanId, TaskId, ToolCallExecution, ToolCallId, ToolCallPlan, ToolCallStatus,
+            ExecutionPlanId, TaskId, ToolCall, ToolCallExecution, ToolCallId, ToolCallPlan,
+            ToolCallStatus, ToolErrorRecord,
         },
         tool::{RetryDecision, ToolError, ToolErrorKind, ToolSuccess},
     };
 
-    /// 只有终态的工具调用状态才应被识别为已结束
+    /// 创建一个 `ToolCallExecution` 对象，并把它的状态变成 [`ToolCallStatus::Running`]。
+    fn running_execution() -> ToolCallExecution {
+        let mut execution = ToolCallExecution::new();
+        execution.set_arguments(serde_json::json!({"limit": 5}));
+        execution.mark_ready_to_execute();
+        execution.mark_running();
+        execution
+    }
+
+    /// 创建一个 `ToolCall` 对象。
+    fn new_tool_call() -> ToolCall {
+        ToolCall::new(
+            ToolCallId::new("call-1"),
+            ExecutionPlanId::new("plan-1"),
+            ToolCallPlan {
+                call_key: "query".to_string(),
+                tool_name: "query_task".to_string(),
+                purpose: "查询任务".to_string(),
+            },
+        )
+    }
+
+    /// 构造一个 [`ToolErrorKind::Transient`] 的临时错误对象。
+    fn transient_error() -> ToolError {
+        ToolError {
+            kind: ToolErrorKind::Transient,
+            message: "临时错误".to_string(),
+        }
+    }
+
+    /// 验证只有终态工具调用状态会被识别为结束。
+    ///
+    /// 方法：分别遍历终态和非终态集合，检查 `is_terminal` 的结果。
     #[test]
-    fn terminal_status_should_be_recognized() {
+    fn should_recognize_only_terminal_statuses() {
         let terminal_statuses = [
             ToolCallStatus::Succeeded,
             ToolCallStatus::Failed,
@@ -244,17 +277,15 @@ mod tests {
         }
     }
 
-    /// `set_arguments` 应该能达到下面的效果：
+    /// 验证设置参数会重置与旧参数相关的执行状态。
     ///
-    /// - `argument_revision` 从 `0` 变成 `1`
-    /// - 状态变成 `ArgumentsReady`
-    /// - `attempt` 被重置为 `0`
-    /// - 旧的 `idempotency_key` 和 `result` 被清空
+    /// 方法：预先填充旧执行信息后设置新参数，并检查版本、状态和缓存字段。
     #[test]
-    fn set_arguments_should_reset_execution_state() {
+    fn should_reset_execution_state_when_setting_arguments() {
         let mut execution = ToolCallExecution::new();
 
         execution.attempt = 3;
+        execution.next_retry_at_ms = Some(5_000);
         execution.idempotency_key = Some("old-key".to_string());
         execution.result = Some(ToolSuccess {
             output: serde_json::json!({"old": true}),
@@ -267,22 +298,17 @@ mod tests {
         assert_eq!(execution.arguments, Some(serde_json::json!({"limit": 5})));
         assert_eq!(execution.status, ToolCallStatus::ArgumentsReady);
         assert_eq!(execution.attempt, 0);
+        assert_eq!(execution.next_retry_at_ms, None);
         assert!(execution.idempotency_key.is_none());
         assert!(execution.result.is_none());
     }
 
-    /// `set_idempotency_key` 生成的幂等键应包含任务、执行计划、工具调用和参数版本
+    /// 验证幂等键包含任务、计划、调用和参数版本身份。
+    ///
+    /// 方法：为带一版参数的工具调用设置幂等键，并比较完整格式。
     #[test]
-    fn set_idempotency_key_should_use_current_identity_and_revision() {
-        let mut tool_call = crate::task::ToolCall::new(
-            ToolCallId::new("call-1"),
-            ExecutionPlanId::new("plan-1"),
-            ToolCallPlan {
-                call_key: "query".to_string(),
-                tool_name: "query_task".to_string(),
-                purpose: "查询任务".to_string(),
-            },
-        );
+    fn should_include_identity_and_argument_revision_in_idempotency_key() {
+        let mut tool_call = new_tool_call();
 
         tool_call
             .execution
@@ -296,41 +322,38 @@ mod tests {
         );
     }
 
-    /// 可重试错误应记录错误并进入等待重试状态
+    /// 验证可重试错误会记录完整错误上下文并安排下一次重试。
+    ///
+    /// 方法：让运行中的调用记录临时错误，并比较状态、重试时间和错误记录快照。
     #[test]
-    fn record_failure_with_retry_should_schedule_next_retry() {
-        let mut execution = ToolCallExecution::new();
+    fn should_schedule_retry_and_record_failure_when_retrying() {
+        let mut execution = running_execution();
+        let retry_decision = RetryDecision::RetryAfter { delay_ms: 1_000 };
 
-        execution.set_arguments(serde_json::json!({"limit": 5}));
-        execution.mark_ready_to_execute();
-        execution.mark_running();
-
-        let error = ToolError {
-            kind: ToolErrorKind::Transient,
-            message: "临时错误".to_string(),
-        };
-
-        execution.record_failure(error, RetryDecision::RetryAfter { delay_ms: 1_000 }, 5_000);
+        execution.record_failure(transient_error(), retry_decision, 5_000);
 
         assert_eq!(execution.status, ToolCallStatus::WaitingRetry);
         assert_eq!(execution.next_retry_at_ms, Some(6_000));
-        assert_eq!(execution.error_records.len(), 1);
-
-        let record = &execution.error_records[0];
-        assert_eq!(record.kind, ToolErrorKind::Transient);
-        assert_eq!(record.argument_revision, 1);
-        assert_eq!(record.attempt, 1);
-        assert_eq!(record.occurred_at_ms, 5_000);
+        assert_eq!(
+            execution.error_records,
+            vec![ToolErrorRecord {
+                kind: ToolErrorKind::Transient,
+                message: "临时错误".to_string(),
+                argument_revision: 1,
+                arguments: Some(serde_json::json!({"limit": 5})),
+                attempt: 1,
+                occurred_at_ms: 5_000,
+                retry_decision,
+            }]
+        );
     }
 
-    /// 不可重试错误应使执行失败，并保留错误记录
+    /// 验证不可重试错误会标记调用失败且不会安排重试。
+    ///
+    /// 方法：让运行中的调用记录停止重试的错误，并检查终态与重试时间。
     #[test]
-    fn record_failure_without_retry_should_mark_failed() {
-        let mut execution = ToolCallExecution::new();
-
-        execution.set_arguments(serde_json::json!({"limit": 5}));
-        execution.mark_ready_to_execute();
-        execution.mark_running();
+    fn should_mark_failed_without_retry() {
+        let mut execution = running_execution();
 
         let error = ToolError {
             kind: ToolErrorKind::Business,
@@ -341,13 +364,14 @@ mod tests {
 
         assert_eq!(execution.status, ToolCallStatus::Failed);
         assert!(execution.next_retry_at_ms.is_none());
-        assert_eq!(execution.error_records.len(), 1);
-        assert_eq!(execution.error_records[0].attempt, 1);
+        // 错误记录的完整字段由可重试分支 `should_schedule_retry_and_record_failure_when_retrying` 覆盖。
     }
 
-    /// 没有参数时，不应进入待执行状态
+    /// 验证没有参数时调用不会进入待执行状态。
+    ///
+    /// 方法：直接标记新建执行信息为待执行，并检查状态保持不变。
     #[test]
-    fn mark_ready_without_arguments_should_keep_pending() {
+    fn should_remain_arguments_pending_without_arguments() {
         let mut execution = ToolCallExecution::new();
 
         execution.mark_ready_to_execute();
@@ -355,31 +379,27 @@ mod tests {
         assert_eq!(execution.status(), ToolCallStatus::ArgumentsPending);
     }
 
-    /// 执行成功后，应清除重试时间并标记为成功
+    /// 验证记录成功会清除重试时间并保存结果。
+    ///
+    /// 方法：先让调用进入等待重试状态，再记录成功结果并检查终态与结果。
     #[test]
-    fn record_success_should_mark_succeeded_and_clear_retry_time() {
-        let mut execution = ToolCallExecution::new();
-
-        execution.set_arguments(serde_json::json!({"limit": 5}));
-        execution.mark_ready_to_execute();
-        execution.mark_running();
+    fn should_mark_succeeded_and_clear_retry_time_when_recording_success() {
+        let mut execution = running_execution();
 
         execution.record_failure(
-            ToolError {
-                kind: ToolErrorKind::Transient,
-                message: "临时错误".to_string(),
-            },
+            transient_error(),
             RetryDecision::RetryAfter { delay_ms: 1_000 },
             5_000,
         );
 
-        execution.record_success(ToolSuccess {
+        let result = ToolSuccess {
             output: serde_json::json!({"ok": true}),
             state_delta: StateDelta::default(),
-        });
+        };
+        execution.record_success(result.clone());
 
         assert_eq!(execution.status, ToolCallStatus::Succeeded);
         assert!(execution.next_retry_at_ms.is_none());
-        assert!(execution.result.is_some());
+        assert_eq!(execution.result, Some(result));
     }
 }

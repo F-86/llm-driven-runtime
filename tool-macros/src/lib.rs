@@ -9,8 +9,8 @@ use syn::{ItemImpl, Type, parse_macro_input};
 /// 用法：
 ///
 /// ```ignore
-/// #[tool_schema(GetRuntimeStatusArg)]
-/// impl Tool for GetRuntimeStatus {
+/// #[tool_schema(ExampleToolArg)]
+/// impl Tool for ExampleTool {
 ///     // ...
 /// }
 /// ```

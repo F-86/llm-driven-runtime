@@ -74,8 +74,8 @@ flowchart LR
 - `Tool` trait（特征）和工具注册表。
 - 测试工具使用 `schemars` 生成参数 Schema。
 - 集成测试使用固定工具选择器和固定参数生成器验证 Runtime 链路。
-- 集成测试通过 `tests/common/tool/` 提供 `QueryTask` 和 `GetRuntimeStatus` 测试工具。
-- 测试覆盖工具参数 Schema、反序列化、未知字段、范围和业务条件。
+- 旧 Runtime 的集成测试使用参数回显 fixture 验证工具选择、参数传递和错误传播。
+- `PhaseRuntime` 的集成测试覆盖决策映射、并行安全校验和原子提交。
 
 目标架构中尚未实现的主要能力包括：
 
@@ -102,6 +102,10 @@ flowchart LR
 | [持久化与恢复](docs/architecture/persistence-and-recovery.md) | 数据模型、事务边界、一致性和崩溃恢复。 |
 | [运行保障](docs/architecture/operations.md) | 资源控制、失败语义、可观测性和安全。 |
 | [实施计划](docs/architecture/implementation-plan.md) | 迁移顺序、里程碑、测试策略和待决策项。 |
+
+## 开发约定
+
+[测试编写约定](docs/testing.md)说明单元测试与集成测试的归属、测试函数命名和注释、场景去重、fixture 边界及提交前验证命令。
 
 ## 快速验证
 
