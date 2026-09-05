@@ -7,7 +7,7 @@ mod tool_call;
 
 pub use aggregate::Task;
 pub use decision::{Decision, ToolCallPlan};
-pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus};
+pub use execution_plan::{ExecutionPlan, ExecutionPlanError, ExecutionPlanStatus};
 pub use ids::{ExecutionPlanId, TaskId, ToolCallId};
 pub use phase::{InvalidPhaseTransition, TaskPhase};
 pub use tool_call::{ToolCall, ToolCallExecution, ToolCallStatus, ToolErrorRecord};

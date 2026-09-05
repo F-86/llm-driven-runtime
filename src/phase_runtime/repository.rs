@@ -321,7 +321,8 @@ mod tests {
             },
         );
 
-        ExecutionPlan::new(plan_id, task_id.clone(), 0, 0, vec![tool_call])
+        ExecutionPlan::try_new(plan_id, task_id.clone(), 0, 0, vec![tool_call])
+            .expect("测试计划应满足 ExecutionPlan 的条件")
     }
 
     /// 成功提交时应该同时保存执行计划并推进 Task。
@@ -521,7 +522,8 @@ mod tests {
             },
         );
 
-        ExecutionPlan::new(plan_id, task_id.clone(), 0, 0, vec![tool_call])
+        ExecutionPlan::try_new(plan_id, task_id.clone(), 0, 0, vec![tool_call])
+            .expect("测试计划应满足 ExecutionPlan 的条件")
     }
 
     /// 两个线程提交相同 Job 时最多只能有一个成功。

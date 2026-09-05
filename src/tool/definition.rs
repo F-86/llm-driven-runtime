@@ -28,12 +28,10 @@ pub struct ToolMetadata {
     pub read_resources: Vec<ResourcePattern>,
     /// 声明需要写的资源
     pub write_resources: Vec<ResourcePattern>,
-    /// 此工具允许同时执行的最大 `ToolCall` 数量
-    pub max_concurrency: usize,
 }
 
 impl ToolMetadata {
-    /// 构建一个只读工具的元数据，并发度为 `1`
+    /// 构建一个只读工具的元数据。
     #[must_use]
     pub fn read_only(read_resources: Vec<ResourcePattern>) -> Self {
         Self {
@@ -41,7 +39,6 @@ impl ToolMetadata {
             requires_approval: false,
             read_resources,
             write_resources: Vec::new(),
-            max_concurrency: 1,
         }
     }
 }

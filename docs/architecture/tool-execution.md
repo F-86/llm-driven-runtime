@@ -35,13 +35,14 @@ pub struct ToolMetadata {
     pub requires_approval: bool,
     pub read_resources: Vec<ResourcePattern>,
     pub write_resources: Vec<ResourcePattern>,
-    pub max_concurrency: usize,
 }
 ```
 
-第一版可以先实现保守校验：只允许只读工具并行，写工具默认独占 ExecutionPlan。后续再扩展资源级冲突判断。
+当前 `PhaseRuntime` 在创建计划时已实现保守校验：工具必须已注册；包含多个调用的计划只允许只读工具，写工具默认独占 `ExecutionPlan`。后续再扩展资源级冲突判断。
 
-工具选择阶段校验并行安全，工具执行前仍需重新校验权限、参数 revision 和业务前置条件。
+并发上限不属于 `ToolMetadata`：它取决于 Worker 容量、租户配额、外部限流和当前部署，应由执行器的运行时策略统一配置和实施，而不是由工具定义声明。
+
+计划创建阶段校验并行安全，工具执行前仍需重新校验权限、参数 revision、业务前置条件和运行时并发限制。
 
 ## 3. 参数生成
 
